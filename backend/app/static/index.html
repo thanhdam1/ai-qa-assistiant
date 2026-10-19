@@ -13,12 +13,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- FontAwesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Cytoscape.js for Interactive Network Graph (Loaded before AMD loader) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+  <!-- Mermaid.js (UMD build, loaded before AMD loader) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/9.4.3/mermaid.min.js"></script>
   <!-- Monaco Editor AMD Loader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
-  <!-- Cytoscape.js for Interactive Network Graph -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
-  <!-- Mermaid.js (UMD build) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/9.4.3/mermaid.min.js"></script>
 
   <script>
     tailwind.config = {
@@ -807,12 +807,22 @@ As a registered customer, I want to checkout my cart, so that I receive my items
 
     // TAB 3: CYTOSCAPE GRAPH & CODEBASE
     async function initCytoscape() {
-      const res = await fetch('/api/v1/codebase/graph-data');
-      const data = await res.json();
+      const container = document.getElementById('cy');
+      if (!container) return;
 
-      cyInstance = cytoscape({
-        container: document.getElementById('cy'),
-        elements: data.elements,
+      const cyLib = window.cytoscape || (typeof cytoscape !== 'undefined' ? cytoscape : null);
+      if (!cyLib) {
+        setTimeout(initCytoscape, 150);
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/v1/codebase/graph-data');
+        const data = await res.json();
+
+        window.cyInstance = cyLib({
+          container: container,
+          elements: data.elements,
         style: [
           {
             selector: 'node',
@@ -866,7 +876,11 @@ As a registered customer, I want to checkout my cart, so that I receive my items
           spacingFactor: 1.25
         }
       });
+      cyInstance = window.cyInstance;
+    } catch (e) {
+      console.error("Cytoscape init error:", e);
     }
+  }
 
     async function importGitHubRepo() {
       const url = document.getElementById('github-url-input').value;
