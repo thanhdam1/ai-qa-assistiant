@@ -17,8 +17,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
   <!-- Cytoscape.js for Interactive Network Graph -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
-  <!-- Mermaid.js -->
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <!-- Mermaid.js (UMD build) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/9.4.3/mermaid.min.js"></script>
 
   <script>
     tailwind.config = {
@@ -143,7 +143,17 @@
             </span>
             <span class="text-[10px] text-slate-500 font-mono">Markdown Mode</span>
           </div>
-          <div id="monaco-prd-editor" class="flex-1 w-full bg-slate-950"></div>
+          <div id="monaco-prd-editor" class="flex-1 w-full bg-slate-950 relative">
+            <textarea id="prd-fallback-textarea" class="w-full h-full bg-slate-950 p-4 font-mono text-xs text-slate-200 outline-none resize-none leading-relaxed" placeholder="Đang nạp Monaco Editor..."># Tính năng Đặt Hàng & Thanh Toán (Checkout)
+
+## User Story: Khách hàng hoàn tất thanh toán
+As a registered customer, I want to checkout my cart, so that I receive my items.
+
+### Acceptance Criteria:
+- Given giỏ hàng có sản phẩm và tổng tiền > 0 When khách hàng bấm Đặt hàng Then hệ thống xác nhận đơn hàng thành công 200 OK.
+- Given giỏ hàng rỗng When khách hàng bấm Đặt hàng Then hệ thống chặn và hiển thị lỗi 'Giỏ hàng không được để trống'.
+- Given thẻ tín dụng hết hạn hoặc số thẻ không hợp lệ When gửi yêu cầu thanh toán Then hệ thống báo lỗi 400 'Thẻ thanh toán không hợp lệ'.</textarea>
+          </div>
         </div>
 
         <!-- Right: Results & RTM Explorer -->
@@ -426,13 +436,25 @@
 
   <!-- MONACO & APP SCRIPTS -->
   <script>
-    mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+    // Global editor instances (using var to avoid ES6 temporal dead zone)
+    var prdEditor = null;
+    var pomEditor = null;
+    var diffEditor = null;
+    var schemaEditor = null;
+    var gitDiffEditor = null;
+    var currentPOMData = null;
+    var activePOMIdx = 0;
+    var isDiffModeActive = false;
+    var cyInstance = null;
 
-    let prdEditor, pomEditor, diffEditor, schemaEditor, gitDiffEditor;
-    let currentPOMData = null;
-    let activePOMIdx = 0;
-    let isDiffModeActive = false;
-    let cyInstance = null;
+    // Safe mermaid initialization
+    if (typeof mermaid !== 'undefined') {
+      try {
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+      } catch (e) {
+        console.warn("Mermaid init warning:", e);
+      }
+    }
 
     // SAMPLES
     const SAMPLE_PRD = `# Tính năng Đặt Hàng & Thanh Toán (Checkout)
@@ -461,67 +483,97 @@ As a registered customer, I want to checkout my cart, so that I receive my items
 @@ -10,3 +10,4 @@
 + public async Task ProcessPaymentAsync(CheckoutRequest req) { return await _repo.SaveAsync(req); }`;
 
-    // MONACO INITIALIZATION
-    require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
-    require(['vs/editor/editor.main'], function () {
-      // 1. PRD Editor
-      prdEditor = monaco.editor.create(document.getElementById('monaco-prd-editor'), {
-        value: SAMPLE_PRD,
-        language: 'markdown',
-        theme: 'vs-dark',
-        minimap: { enabled: false },
-        automaticLayout: true,
-        fontSize: 12,
-        lineNumbers: 'on',
-        scrollBeyondLastLine: false,
-      });
+    // MONACO INITIALIZATION WITH AUTO-RETRY
+    function initMonaco() {
+      if (typeof require === 'undefined') {
+        setTimeout(initMonaco, 150);
+        return;
+      }
 
-      // 2. POM Code Editor
-      pomEditor = monaco.editor.create(document.getElementById('monaco-pom-container'), {
-        value: '# Bấm "Sinh Mã Nguồn POM" để tạo mã kiểm thử...',
-        language: 'python',
-        theme: 'vs-dark',
-        minimap: { enabled: true },
-        automaticLayout: true,
-        fontSize: 12,
-        scrollBeyondLastLine: false,
-      });
+      try {
+        require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+        require(['vs/editor/editor.main'], function () {
+          try {
+            // 1. PRD Editor
+            window.prdEditor = monaco.editor.create(document.getElementById('monaco-prd-editor'), {
+              value: SAMPLE_PRD,
+              language: 'markdown',
+              theme: 'vs-dark',
+              minimap: { enabled: false },
+              automaticLayout: true,
+              fontSize: 12,
+              lineNumbers: 'on',
+              scrollBeyondLastLine: false,
+            });
+            prdEditor = window.prdEditor;
 
-      // 3. Diff Editor
-      diffEditor = monaco.editor.createDiffEditor(document.getElementById('monaco-diff-container'), {
-        theme: 'vs-dark',
-        automaticLayout: true,
-        readOnly: true,
-        fontSize: 11,
-      });
+            // 2. POM Code Editor
+            window.pomEditor = monaco.editor.create(document.getElementById('monaco-pom-container'), {
+              value: '# Bấm "Sinh Mã Nguồn POM" để tạo mã kiểm thử...',
+              language: 'python',
+              theme: 'vs-dark',
+              minimap: { enabled: true },
+              automaticLayout: true,
+              fontSize: 12,
+              scrollBeyondLastLine: false,
+            });
+            pomEditor = window.pomEditor;
 
-      // 4. Schema Editor
-      schemaEditor = monaco.editor.create(document.getElementById('monaco-schema-editor'), {
-        value: SAMPLE_SCHEMA,
-        language: 'json',
-        theme: 'vs-dark',
-        minimap: { enabled: false },
-        automaticLayout: true,
-        fontSize: 12,
-        scrollBeyondLastLine: false,
-      });
+            // 3. Diff Editor
+            window.diffEditor = monaco.editor.createDiffEditor(document.getElementById('monaco-diff-container'), {
+              theme: 'vs-dark',
+              automaticLayout: true,
+              readOnly: true,
+              fontSize: 11,
+            });
+            diffEditor = window.diffEditor;
 
-      // 5. Git Diff Editor
-      gitDiffEditor = monaco.editor.create(document.getElementById('monaco-diff-input'), {
-        value: SAMPLE_DIFF,
-        language: 'diff',
-        theme: 'vs-dark',
-        minimap: { enabled: false },
-        automaticLayout: true,
-        fontSize: 12,
-        scrollBeyondLastLine: false,
-      });
+            // 4. Schema Editor
+            window.schemaEditor = monaco.editor.create(document.getElementById('monaco-schema-editor'), {
+              value: SAMPLE_SCHEMA,
+              language: 'json',
+              theme: 'vs-dark',
+              minimap: { enabled: false },
+              automaticLayout: true,
+              fontSize: 12,
+              scrollBeyondLastLine: false,
+            });
+            schemaEditor = window.schemaEditor;
 
-      // Trigger initial demo loads
+            // 5. Git Diff Editor
+            window.gitDiffEditor = monaco.editor.create(document.getElementById('monaco-diff-input'), {
+              value: SAMPLE_DIFF,
+              language: 'diff',
+              theme: 'vs-dark',
+              minimap: { enabled: false },
+              automaticLayout: true,
+              fontSize: 12,
+              scrollBeyondLastLine: false,
+            });
+            gitDiffEditor = window.gitDiffEditor;
+
+            // Trigger initial demo loads once Monaco is mounted
+            generatePOM();
+            generateSynthetic();
+          } catch (e) {
+            console.error("Monaco instantiate error:", e);
+          }
+        });
+      } catch (err) {
+        console.error("Monaco require.config error:", err);
+      }
+    }
+
+    // Launch Monaco and Cytoscape as soon as DOM is interactive
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        initMonaco();
+        initCytoscape();
+      });
+    } else {
+      initMonaco();
       initCytoscape();
-      generatePOM();
-      generateSynthetic();
-    });
+    }
 
     // TAB SWITCHER
     function switchTab(tabId) {
@@ -537,21 +589,32 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       activeBtn.classList.add('bg-blue-600', 'text-white', 'shadow-sm');
 
       // Trigger Monaco layout recalculation
-      if (tabId === 'qa' && prdEditor) prdEditor.layout();
-      if (tabId === 'pom' && pomEditor) pomEditor.layout();
-      if (tabId === 'synthetic' && schemaEditor) schemaEditor.layout();
-      if (tabId === 'prbot' && gitDiffEditor) gitDiffEditor.layout();
-      if (tabId === 'graph' && cyInstance) { cyInstance.resize(); cyInstance.fit(); }
+      if (tabId === 'qa' && window.prdEditor && typeof window.prdEditor.layout === 'function') window.prdEditor.layout();
+      if (tabId === 'pom' && window.pomEditor && typeof window.pomEditor.layout === 'function') window.pomEditor.layout();
+      if (tabId === 'synthetic' && window.schemaEditor && typeof window.schemaEditor.layout === 'function') window.schemaEditor.layout();
+      if (tabId === 'prbot' && window.gitDiffEditor && typeof window.gitDiffEditor.layout === 'function') window.gitDiffEditor.layout();
+      if (tabId === 'graph' && window.cyInstance) { window.cyInstance.resize(); window.cyInstance.fit(); }
     }
 
     // TAB 1 ACTIONS
     function loadSamplePRD() {
-      if (prdEditor) prdEditor.setValue(SAMPLE_PRD);
+      if (window.prdEditor && typeof window.prdEditor.setValue === 'function') {
+        window.prdEditor.setValue(SAMPLE_PRD);
+      } else {
+        const el = document.getElementById('prd-fallback-textarea');
+        if (el) el.value = SAMPLE_PRD;
+      }
     }
 
     let lastTestSuite = null;
     async function generateTestCases() {
-      const content = prdEditor ? prdEditor.getValue() : SAMPLE_PRD;
+      let content = SAMPLE_PRD;
+      if (window.prdEditor && typeof window.prdEditor.getValue === 'function') {
+        content = window.prdEditor.getValue();
+      } else {
+        const el = document.getElementById('prd-fallback-textarea');
+        if (el && el.value) content = el.value;
+      }
       const btn = document.getElementById('btn-generate-tc');
       btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang Phân Tích...`;
 
