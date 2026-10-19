@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-10-19T13:55:08Z",
+  "metrics": {
+    "ast_scope_accuracy": 100.0,
+    "retrieval_recall_at_3": 50.0,
+    "retrieval_precision_at_3": 100.0,
+    "test_groundedness_faithfulness": 100.0,
+    "pom_syntax_validity": 100.0,
+    "execution_time_seconds": 0.03
+  }
+}
