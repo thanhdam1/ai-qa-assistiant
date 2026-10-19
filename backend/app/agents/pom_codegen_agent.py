@@ -9,6 +9,7 @@ class GeneratedFile(BaseModel):
     file_type: str  # base_page, page_object, test_spec
     language: str   # python, typescript
     content: str
+    original_content: Optional[str] = None
     syntax_valid: bool = False
     validation_errors: List[str] = Field(default_factory=list)
     healing_attempts: int = 0
@@ -76,6 +77,7 @@ class POMCodeGenerator:
                     file_type=f_type,
                     language=language,
                     content=val_result.fixed_content or raw_code,
+                    original_content=raw_code if val_result.healing_attempts > 0 else raw_code,
                     syntax_valid=val_result.is_valid,
                     validation_errors=val_result.errors,
                     healing_attempts=val_result.healing_attempts
