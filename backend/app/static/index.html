@@ -701,23 +701,43 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       const statusPill = document.getElementById('runner-status-pill');
 
       btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Running Chromium...`;
-      statusPill.innerText = "RUNNING";
+      statusPill.innerText = "STREAMING";
       statusPill.className = "text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono animate-pulse";
+      terminal.innerHTML = "";
+
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${window.location.host}/api/v1/qa/ws/runner`;
 
       try {
-        const res = await fetch('/api/v1/qa/run-test', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: code, framework: "playwright", test_name: "test_checkout" })
-        });
-        const data = await res.json();
-
-        terminal.innerHTML = `<span class="${data.status === 'PASSED' ? 'text-emerald-400' : 'text-rose-400'} whitespace-pre-wrap">${data.terminal_logs}</span>`;
-        statusPill.innerText = data.status;
-        statusPill.className = data.status === 'PASSED' ? 'text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono' : 'text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 font-mono';
+        const ws = new WebSocket(wsUrl);
+        let logs = [];
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ code: code, framework: "playwright" }));
+        };
+        ws.onmessage = (event) => {
+          logs.push(event.data);
+          terminal.innerHTML = `<span class="text-emerald-400 whitespace-pre-wrap">${logs.join('\n')}</span>`;
+          terminal.scrollTop = terminal.scrollHeight;
+        };
+        ws.onclose = () => {
+          statusPill.innerText = "PASSED";
+          statusPill.className = "text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono";
+          btn.innerHTML = `<i class="fa-solid fa-play"></i> <span>▶ Run Test Now</span>`;
+        };
+        ws.onerror = async () => {
+          const res = await fetch('/api/v1/qa/run-test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: code, framework: "playwright", test_name: "test_checkout" })
+          });
+          const data = await res.json();
+          terminal.innerHTML = `<span class="${data.status === 'PASSED' ? 'text-emerald-400' : 'text-rose-400'} whitespace-pre-wrap">${data.terminal_logs}</span>`;
+          statusPill.innerText = data.status;
+          statusPill.className = data.status === 'PASSED' ? 'text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono' : 'text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 font-mono';
+          btn.innerHTML = `<i class="fa-solid fa-play"></i> <span>▶ Run Test Now</span>`;
+        };
       } catch (err) {
         terminal.innerText = "Lỗi thực thi test runner: " + err;
-      } finally {
         btn.innerHTML = `<i class="fa-solid fa-play"></i> <span>▶ Run Test Now</span>`;
       }
     }

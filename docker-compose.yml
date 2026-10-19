@@ -1,29 +1,56 @@
 version: '3.8'
 
 services:
+  # 1. Qdrant Vector Database
   qdrant:
     image: qdrant/qdrant:latest
     container_name: ai_qa_qdrant
     ports:
-      - "6333:6333" # REST API & Web UI Dashboard (http://localhost:6333/dashboard)
+      - "6333:6333" # REST API & Web Dashboard: http://localhost:6333/dashboard
       - "6334:6334" # gRPC
     volumes:
       - qdrant_storage:/qdrant/storage
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/readyz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
-  # Backend FastAPI Service (Optional containerized mode)
-  # backend:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: Dockerfile
-  #   container_name: ai_qa_backend
-  #   ports:
-  #     - "8000:8000"
-  #   env_file:
-  #     - .env
-  #   depends_on:
-  #     - qdrant
+  # 2. AI QA Assistant Backend Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_qa_backend
+    ports:
+      - "8000:8000" # Web SaaS UI: http://localhost:8000
+    environment:
+      - ENVIRONMENT=production
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5-coder:32b}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 3. Local On-Premise LLM Engine (Optional profile: docker compose --profile local-ai up -d)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai_qa_ollama
+    profiles: ["local-ai"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
 
 volumes:
   qdrant_storage:
+    driver: local
+  ollama_models:
     driver: local

@@ -2,6 +2,7 @@ import os
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 import tree_sitter_languages
+from app.core.masking import DataMasker
 
 class CodeChunk(BaseModel):
     chunk_id: str
@@ -65,6 +66,7 @@ class ASTParser:
 
     @classmethod
     def parse_code(cls, code: str, file_path: str, language: Optional[str] = None) -> List[CodeChunk]:
+        code, _ = DataMasker.mask_text(code)
         if not language:
             language = cls.detect_language(file_path)
             if not language:

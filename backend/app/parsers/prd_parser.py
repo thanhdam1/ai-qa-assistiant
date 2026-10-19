@@ -1,6 +1,7 @@
 import re
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
+from app.core.masking import DataMasker
 
 class AcceptanceCriteria(BaseModel):
     id: str = Field(description="Unique AC Identifier e.g. AC-01")
@@ -34,6 +35,7 @@ class PRDParser:
 
     @staticmethod
     def parse_markdown(content: str, filename: str = "PRD.md") -> ParsedPRD:
+        content, _ = DataMasker.mask_text(content)
         lines = content.splitlines()
         title = filename.replace(".md", "").replace("_", " ").title()
         overview = []

@@ -2,6 +2,7 @@ import re
 from typing import List, Dict, Any, Optional, Set
 from pydantic import BaseModel, Field
 from app.core.config import settings
+from app.core.llm_client import LLMClient
 from app.parsers.ast_parser import ASTParser, CodeChunk
 from app.rag.vector_store import VectorStore
 from app.rag.hybrid_retriever import HybridRetriever
@@ -142,31 +143,26 @@ class CodebaseArchitectureAgent:
         return "\n".join(lines)
 
     def _synthesize_explanation(self, query: str, chunks: List[Dict[str, Any]], mermaid_diagram: str) -> str:
-        if settings.OPENAI_API_KEY and settings.OPENAI_API_KEY.startswith("sk-"):
-            try:
-                from openai import OpenAI
-                client = OpenAI(api_key=settings.OPENAI_API_KEY)
-                prompt = (
-                    f"You are a Principal Software Architect.\n"
-                    f"Explain the architecture and execution flow for the user query: '{query}'.\n\n"
-                    f"Relevant Code Components:\n"
-                )
-                for c in chunks:
-                    prompt += f"- File: {c.get('file_path')} | Component: {c.get('name')} | Signature: {c.get('signature')}\n"
+        prompt = (
+            f"You are a Principal Software Architect.\n"
+            f"Explain the architecture and execution flow for the user query: '{query}'.\n\n"
+            f"Relevant Code Components:\n"
+        )
+        for c in chunks:
+            prompt += f"- File: {c.get('file_path')} | Component: {c.get('name')} | Signature: {c.get('signature')}\n"
 
-                prompt += (
-                    f"\nMermaid Sequence Diagram:\n```mermaid\n{mermaid_diagram}\n```\n\n"
-                    "Provide a clear, high-level architectural walkthrough: Component responsibilities, data flow, and error handling."
-                )
+        prompt += (
+            f"\nMermaid Sequence Diagram:\n```mermaid\n{mermaid_diagram}\n```\n\n"
+            "Provide a clear, high-level architectural walkthrough: Component responsibilities, data flow, and error handling."
+        )
 
-                response = client.chat.completions.create(
-                    model=settings.OPENAI_MODEL,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.2
-                )
-                return response.choices[0].message.content.strip()
-            except Exception:
-                pass
+        llm_resp = LLMClient.generate(
+            prompt=prompt,
+            system_instruction="You are an enterprise software architect explaining system design.",
+            temperature=0.2
+        )
+        if llm_resp:
+            return llm_resp
 
         # Deterministic architectural breakdown
         comp_names = [c.get("name") for c in chunks]

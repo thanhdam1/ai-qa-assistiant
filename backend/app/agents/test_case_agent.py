@@ -2,6 +2,7 @@ import json
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from app.core.config import settings
+from app.core.llm_client import LLMClient
 from app.parsers.prd_parser import ParsedPRD, UserStory
 from app.parsers.openapi_parser import ParsedOpenAPI, APIEndpoint
 
@@ -10,7 +11,7 @@ class TestCase(BaseModel):
     title: str = Field(description="Concise description of the test scenario")
     user_story_id: Optional[str] = None
     acceptance_criteria_id: Optional[str] = None
-    category: str = Field(description="Positive, Boundary Value Analysis, Equivalence Partitioning, Negative, Security")
+    category: str = Field(description="Positive, Boundary Value Analysis, Equivalence Partitioning, Negative, Security, OWASP")
     priority: str = Field(default="Medium", description="Critical, High, Medium, Low")
     pre_conditions: List[str] = Field(default_factory=list)
     test_steps: List[str] = Field(default_factory=list)
@@ -28,7 +29,7 @@ class TestSuite(BaseModel):
 class TestCaseGenerator:
     """
     Synthesizes comprehensive ISTQB-grounded Test Suites from PRD and OpenAPI specs.
-    Combines Happy Path, Boundary Values, Equivalence Partitions, and Security Negative Cases.
+    Combines Happy Path, Boundary Values, Equivalence Partitions, and OWASP Top 10 Security Cases.
     """
 
     @classmethod
@@ -38,12 +39,13 @@ class TestCaseGenerator:
         api_spec: Optional[ParsedOpenAPI] = None,
         retrieved_context: Optional[List[Dict[str, Any]]] = None
     ) -> TestSuite:
-        # Check if OpenAI API key is available for LLM generation
-        if settings.OPENAI_API_KEY and settings.OPENAI_API_KEY.startswith("sk-"):
-            try:
-                return cls._generate_with_llm(prd, api_spec, retrieved_context)
-            except Exception:
-                pass  # Fallback to deterministic ISTQB rule generator
+        # Attempt LLM generation first via unified hybrid adapter
+        try:
+            llm_suite = cls._generate_with_llm(prd, api_spec, retrieved_context)
+            if llm_suite and llm_suite.test_cases:
+                return llm_suite
+        except Exception:
+            pass  # Fallback to deterministic ISTQB rule generator
 
         return cls._generate_deterministic_suite(prd, api_spec)
 
@@ -117,27 +119,59 @@ class TestCaseGenerator:
                 test_cases.append(tc_neg)
                 tc_counter += 1
 
-        # Add Security / Injection Test Case
-        tc_sec = TestCase(
-            id=f"TC-{tc_counter:03d}",
-            title=f"[Security] SQL Injection and XSS Resilience on {prd.title}",
-            user_story_id=prd.user_stories[0].id if prd.user_stories else "US-01",
-            category="Security",
-            priority="Critical",
-            pre_conditions=["Authenticated user session"],
-            test_steps=[
-                "1. Input malicious SQL syntax payload: ' OR '1'='1' --",
-                "2. Input cross-site scripting payload: <script>alert(1)</script>",
-                "3. Submit form"
-            ],
-            test_data={"sqli_payload": "' OR '1'='1' --", "xss_payload": "<script>alert(1)</script>"},
-            expected_result="Input is properly sanitized/escaped; system returns 400 Bad Request; no script execution or DB leak occurs."
-        )
-        test_cases.append(tc_sec)
+        primary_us_id = prd.user_stories[0].id if prd.user_stories else "US-01"
+
+        # OWASP Security Suite (Injection, IDOR, Rate Limiting)
+        owasp_cases = [
+            TestCase(
+                id=f"TC-{tc_counter:03d}",
+                title=f"[OWASP-A03] SQL & NoSQL Injection Resilience on {prd.title}",
+                user_story_id=primary_us_id,
+                category="Security",
+                priority="Critical",
+                pre_conditions=["Authenticated user session"],
+                test_steps=[
+                    "1. Input malicious SQL syntax payload: ' OR '1'='1' --",
+                    "2. Input cross-site scripting payload: <script>alert(1)</script>",
+                    "3. Submit form"
+                ],
+                test_data={"sqli_payload": "' OR '1'='1' --", "xss_payload": "<script>alert(1)</script>"},
+                expected_result="Input is properly sanitized/escaped; system returns 400 Bad Request; no script execution or DB leak occurs."
+            ),
+            TestCase(
+                id=f"TC-{tc_counter+1:03d}",
+                title=f"[OWASP-A01] Broken Object Level Authorization (IDOR) on {prd.title}",
+                user_story_id=primary_us_id,
+                category="Security",
+                priority="Critical",
+                pre_conditions=["User A logged in, User B record exists"],
+                test_steps=[
+                    "1. User A initiates resource access request with User B's resource ID",
+                    "2. Intercept and inspect response payload"
+                ],
+                test_data={"victim_id": "usr_victim_9999", "caller_id": "usr_attacker_001"},
+                expected_result="System returns HTTP 403 Forbidden. Access is strictly denied without leaking data."
+            ),
+            TestCase(
+                id=f"TC-{tc_counter+2:03d}",
+                title=f"[OWASP-A07] Rate Limiting & Brute-Force Protection on {prd.title}",
+                user_story_id=primary_us_id,
+                category="Security",
+                priority="High",
+                pre_conditions=["Target endpoint reachable"],
+                test_steps=[
+                    "1. Dispatch 100 consecutive API requests within 10 seconds from single client",
+                    "2. Check response codes and headers"
+                ],
+                test_data={"burst_count": 100, "window_seconds": 10},
+                expected_result="System triggers rate limiting after threshold and returns HTTP 429 Too Many Requests."
+            )
+        ]
+        test_cases.extend(owasp_cases)
 
         return TestSuite(
             feature_title=prd.title,
-            summary=f"Automated test suite with {len(test_cases)} scenarios covering Positive, BVA, Negative, and Security partitions.",
+            summary=f"Automated test suite with {len(test_cases)} scenarios covering Positive, BVA, Negative, and OWASP Security partitions.",
             total_test_cases=len(test_cases),
             test_cases=test_cases
         )
@@ -148,10 +182,7 @@ class TestCaseGenerator:
         prd: ParsedPRD,
         api_spec: Optional[ParsedOpenAPI] = None,
         retrieved_context: Optional[List[Dict[str, Any]]] = None
-    ) -> TestSuite:
-        from openai import OpenAI
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
-
+    ) -> Optional[TestSuite]:
         prompt = (
             f"You are an expert QA Lead and ISTQB Specialist.\n"
             f"Generate a comprehensive test suite in strict JSON format matching the TestSuite Pydantic schema.\n\n"
@@ -164,16 +195,18 @@ class TestCaseGenerator:
         prompt += (
             "REQUIREMENTS:\n"
             "1. Cover every Acceptance Criteria with Positive (Happy Path), Boundary Value Analysis (BVA), and Negative cases.\n"
-            "2. Include Security & SQLi/XSS testing.\n"
+            "2. Include OWASP Security testing (SQLi/XSS, IDOR, Rate Limiting).\n"
             "3. Format exactly as JSON with keys: 'feature_title', 'summary', 'total_test_cases', 'test_cases'.\n"
         )
 
-        response = client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
+        response_str = LLMClient.generate(
+            prompt=prompt,
+            system_instruction="You are an ISTQB Certified Software Tester. Respond in JSON only.",
+            json_mode=True,
             temperature=0.2
         )
+        if not response_str:
+            return None
 
-        data = json.loads(response.choices[0].message.content)
+        data = json.loads(response_str)
         return TestSuite(**data)

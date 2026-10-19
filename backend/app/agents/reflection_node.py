@@ -3,6 +3,7 @@ import re
 from typing import List, Dict, Any, Tuple, Optional
 from pydantic import BaseModel, Field
 from app.core.config import settings
+from app.core.llm_client import LLMClient
 
 class ValidationResult(BaseModel):
     is_valid: bool
@@ -10,13 +11,22 @@ class ValidationResult(BaseModel):
     errors: List[str] = Field(default_factory=list)
     fixed_content: Optional[str] = None
     healing_attempts: int = 0
+    locators_healed: int = 0
 
 class ReflectionNode:
     """
-    Agentic Self-Correction & Syntax Verification Node.
-    Validates generated test scripts via AST dry-runs.
-    If syntax errors or missing imports are detected, triggers self-healing loops before returning code.
+    Enterprise Agentic Self-Correction & Syntax Verification Node.
+    Validates generated test scripts via AST dry-runs and dynamic locator analysis.
+    If syntax errors or brittle locators are detected, triggers self-healing loops before returning code.
     """
+
+    # Common brittle locator patterns that cause flaky UI tests
+    BRITTLE_LOCATOR_PATTERNS = [
+        (r'page\.locator\([\'"]\/html\/body\/[^\'"]+[\'"]\)', 'page.get_by_role("button", name="Submit")'),
+        (r'page\.locator\([\'"]#btn-[0-9a-fA-F]{4,}[\'"]\)', 'page.get_by_test_id("submit-btn")'),
+        (r'page\.locator\([\'"]div\.css-[0-9a-zA-Z]+ > button[\'"]\)', 'page.get_by_role("button")'),
+        (r'page\.click\([\'"]\/\/[^\'"]+[\'"]\)', 'page.get_by_role("button").click()'),
+    ]
 
     @classmethod
     def validate_code_syntax(cls, code: str, language: str = "python") -> Tuple[bool, List[str]]:
@@ -36,10 +46,21 @@ class ReflectionNode:
             balance_error = cls._check_bracket_balance(code)
             if balance_error:
                 errors.append(balance_error)
-            # Check for common TS syntax glitches
-            if "function(" in code and not re.search(r"function\s+[a-zA-Z0-9_]+\(", code):
-                pass
         return len(errors) == 0, errors
+
+    @classmethod
+    def heal_brittle_locators(cls, code: str) -> Tuple[str, int]:
+        """
+        Scans and heals brittle locators into resilient semantic Playwright locators.
+        """
+        healed_code = code
+        count = 0
+        for pattern, replacement in cls.BRITTLE_LOCATOR_PATTERNS:
+            matches = re.findall(pattern, healed_code)
+            if matches:
+                count += len(matches)
+                healed_code = re.sub(pattern, replacement, healed_code)
+        return healed_code, count
 
     @classmethod
     def validate_and_heal(
@@ -47,14 +68,17 @@ class ReflectionNode:
         code: str,
         file_path: str,
         language: str = "python",
-        max_retries: int = 2
+        max_retries: int = 3
     ) -> ValidationResult:
         """
-        Validates code and applies self-correction loop if errors are detected.
+        Validates code and applies multi-turn self-correction loop if errors are detected.
+        Also heals brittle selectors to eliminate test flakiness.
         """
-        current_code = code
+        # Step 1: Heal brittle locators
+        current_code, locators_fixed = cls.heal_brittle_locators(code)
         attempts = 0
 
+        # Step 2: Multi-turn AST validation loop
         for attempt in range(max_retries + 1):
             is_valid, errors = cls.validate_code_syntax(current_code, language=language)
             if is_valid:
@@ -63,7 +87,8 @@ class ReflectionNode:
                     language=language,
                     errors=[],
                     fixed_content=current_code,
-                    healing_attempts=attempts
+                    healing_attempts=attempts,
+                    locators_healed=locators_fixed
                 )
 
             # Need self-healing
@@ -76,21 +101,40 @@ class ReflectionNode:
             language=language,
             errors=errors,
             fixed_content=current_code,
-            healing_attempts=attempts
+            healing_attempts=attempts,
+            locators_healed=locators_fixed
         )
 
     @classmethod
     def _heal_code(cls, code: str, errors: List[str], language: str = "python") -> str:
         """
-        Attempts self-healing via LLM or deterministic rule-based repair.
+        Attempts self-healing via Unified Hybrid LLM or deterministic rule-based repair.
         """
-        if settings.OPENAI_API_KEY and settings.OPENAI_API_KEY.startswith("sk-"):
-            try:
-                return cls._heal_with_llm(code, errors, language)
-            except Exception:
-                pass
+        # Try LLM Healing first
+        prompt = (
+            f"You are an automated code healing agent. The following {language} code has syntax errors.\n\n"
+            f"ERRORS DETECTED:\n{chr(10).join(errors)}\n\n"
+            f"CODE WITH ERRORS:\n```\n{code}\n```\n\n"
+            "Return ONLY the corrected, clean, compilable code without markdown backticks or explanations."
+        )
+        llm_fix = LLMClient.generate(
+            prompt=prompt,
+            system_instruction="You fix syntax and linter errors in test automation code.",
+            temperature=0.0
+        )
+        if llm_fix:
+            # Strip markdown fences if present
+            fixed_text = llm_fix.strip()
+            if fixed_text.startswith("```"):
+                lines = fixed_text.splitlines()
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].startswith("```"):
+                    lines = lines[:-1]
+                fixed_text = "\n".join(lines).strip()
+            return fixed_text
 
-        # Rule-based repair heuristics
+        # Rule-based repair heuristics fallback
         return cls._heal_deterministic(code, errors, language)
 
     @classmethod
@@ -116,36 +160,6 @@ class ReflectionNode:
                 healed_lines.insert(0, "from playwright.sync_api import Page, expect")
 
         return "\n".join(healed_lines)
-
-    @classmethod
-    def _heal_with_llm(cls, code: str, errors: List[str], language: str) -> str:
-        from openai import OpenAI
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
-
-        prompt = (
-            f"You are an automated code healing agent. The following {language} code has syntax errors.\n\n"
-            f"ERRORS DETECTED:\n{chr(10).join(errors)}\n\n"
-            f"CODE WITH ERRORS:\n```\n{code}\n```\n\n"
-            "Return ONLY the corrected, clean, compilable code without markdown backticks or explanations."
-        )
-
-        response = client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0
-        )
-
-        fixed_text = response.choices[0].message.content.strip()
-        # Clean any markdown fences if present
-        if fixed_text.startswith("```"):
-            lines = fixed_text.splitlines()
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].startswith("```"):
-                lines = lines[:-1]
-            fixed_text = "\n".join(lines).strip()
-
-        return fixed_text
 
     @classmethod
     def _check_bracket_balance(cls, code: str) -> Optional[str]:

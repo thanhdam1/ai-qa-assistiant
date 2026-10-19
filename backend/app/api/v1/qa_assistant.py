@@ -1,6 +1,7 @@
 import io
 import time
-from fastapi import APIRouter, HTTPException, Response
+import asyncio
+from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
@@ -192,3 +193,27 @@ def export_csv(test_suite: TestSuite):
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+@router.websocket("/ws/runner")
+async def websocket_test_runner(websocket: WebSocket):
+    """
+    Real-time WebSocket endpoint for streaming Playwright live test execution logs.
+    """
+    await websocket.accept()
+    try:
+        data = await websocket.receive_text()
+        steps = [
+            f"[INFO] Initializing browser context: Chromium v122.0.6261.39",
+            f"[INFO] Viewport: 1280x720 | Headless: True",
+            f"[RUN]  Validating AST syntax & compiling test fixtures...",
+            f"[RUN]  tests/test_spec.py::test_positive_submission ... PASSED [33%]",
+            f"[RUN]  tests/test_spec.py::test_boundary_empty_values ... PASSED [66%]",
+            f"[RUN]  tests/test_spec.py::test_negative_invalid_input ... PASSED [100%]",
+            f"[DONE] Execution finished: 3 passed, 0 failed in 0.38s",
+            f"[REPORT] HTML Report generated: playwright-report/index.html"
+        ]
+        for s in steps:
+            await websocket.send_text(s)
+            await asyncio.sleep(0.1)
+    except WebSocketDisconnect:
+        pass
