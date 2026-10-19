@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full bg-slate-900 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI QA Assistant & Codebase Architecture Q&A</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Mermaid.js for Diagrams -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['Fira Code', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              800: '#1e40af',
+              900: '#1e3a8a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    pre, code { font-family: 'Fira Code', monospace; }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #0f172a; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+
+  <!-- TOP NAVBAR -->
+  <header class="h-16 border-b border-slate-800 bg-slate-900/80 backdrop-blur px-6 flex items-center justify-between z-20 shrink-0">
+    <div class="flex items-center space-x-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-teal-400 flex items-center justify-center shadow-lg shadow-blue-500/20">
+        <i class="fa-solid fa-microchip text-white text-lg"></i>
+      </div>
+      <div>
+        <div class="flex items-center space-x-2">
+          <span class="font-bold text-lg text-white tracking-tight">AI QA Assistant</span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">v1.0.0</span>
+        </div>
+        <p class="text-xs text-slate-400">Enterprise RAG Engine for QA Automation & Codebase Architecture</p>
+      </div>
+    </div>
+
+    <!-- Right status -->
+    <div class="flex items-center space-x-4">
+      <div class="flex items-center space-x-2 text-xs text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="font-medium">System Online</span>
+      </div>
+      <a href="/docs" target="_blank" class="text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition flex items-center space-x-1.5 border border-slate-700">
+        <i class="fa-solid fa-bolt text-amber-400"></i>
+        <span>Swagger API</span>
+      </a>
+      <a href="https://github.com/thanhdam1/ai-qa-assistiant" target="_blank" class="text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition flex items-center space-x-1.5 border border-slate-700">
+        <i class="fa-brands fa-github"></i>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- MAIN APP CONTAINER -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- SIDEBAR NAV -->
+    <aside class="w-64 border-r border-slate-800 bg-slate-900/50 p-4 flex flex-col justify-between shrink-0">
+      <div class="space-y-1.5">
+        <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-3 mb-2">Modules & Chức Năng</div>
+        
+        <button onclick="switchTab('qa')" id="tab-btn-qa" class="w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-white bg-blue-600 shadow-md shadow-blue-600/30">
+          <i class="fa-solid fa-list-check w-5 text-center"></i>
+          <span>PRD to Test Cases</span>
+        </button>
+
+        <button onclick="switchTab('pom')" id="tab-btn-pom" class="w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
+          <i class="fa-solid fa-code w-5 text-center"></i>
+          <span>POM Test Codegen</span>
+        </button>
+
+        <button onclick="switchTab('synthetic')" id="tab-btn-synthetic" class="w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
+          <i class="fa-solid fa-flask w-5 text-center"></i>
+          <span>Synthetic Test Data</span>
+        </button>
+
+        <button onclick="switchTab('codebase')" id="tab-btn-codebase" class="w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
+          <i class="fa-solid fa-diagram-project w-5 text-center"></i>
+          <span>Codebase Q&A & Flow</span>
+        </button>
+
+        <button onclick="switchTab('prbot')" id="tab-btn-prbot" class="w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
+          <i class="fa-solid fa-robot w-5 text-center"></i>
+          <span>CI/CD PR Impact Bot</span>
+        </button>
+      </div>
+
+      <!-- Quick Metrics Footer -->
+      <div class="glass-card p-3 rounded-xl border border-slate-800 text-xs text-slate-400 space-y-1.5">
+        <div class="font-medium text-slate-300 flex items-center justify-between">
+          <span>Engine Status</span>
+          <span class="text-emerald-400 font-mono">100% Pass</span>
+        </div>
+        <div class="flex justify-between text-[11px]">
+          <span>AST Chunking</span>
+          <span class="text-blue-400">Tree-sitter</span>
+        </div>
+        <div class="flex justify-between text-[11px]">
+          <span>Search Fusion</span>
+          <span class="text-teal-400">Dense + BM25</span>
+        </div>
+        <div class="flex justify-between text-[11px]">
+          <span>Reflection Loop</span>
+          <span class="text-purple-400">AST Healer</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CONTENT AREA -->
+    <main class="flex-1 overflow-y-auto custom-scroll p-6">
+
+      <!-- ================= TAB 1: PRD TO TEST CASES & RTM ================= -->
+      <section id="tab-qa" class="space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-bold text-white tracking-tight">AI QA Assistant: Sinh Test Case & Ma Trận RTM</h1>
+            <p class="text-sm text-slate-400">Tự động bóc tách PRD/User Stories, sinh bộ Test Suite chuẩn ISTQB và bảo đảm 100% Traceability Matrix.</p>
+          </div>
+          <button onclick="loadSamplePRD()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-blue-400 hover:bg-slate-700 border border-slate-700 transition">
+            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Tải dữ liệu mẫu PRD
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <!-- Input Form -->
+          <div class="lg:col-span-5 glass-card rounded-2xl p-5 border border-slate-800 space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Tên Tính Năng (Feature)</label>
+              <input type="text" id="prd-filename" value="User_Checkout_Feature.md" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 font-mono">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Nội Dung Tài Liệu PRD / SRS / User Stories</label>
+              <textarea id="prd-content" rows="12" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono custom-scroll leading-relaxed" placeholder="Dán nội dung Markdown của PRD vào đây..."></textarea>
+            </div>
+
+            <button onclick="generateTestCases()" id="btn-gen-tc" class="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-500/25 flex items-center justify-center space-x-2">
+              <i class="fa-solid fa-bolt"></i>
+              <span>Phân Tích & Sinh Kịch Bản Kiểm Thử</span>
+            </button>
+          </div>
+
+          <!-- Output Panel -->
+          <div class="lg:col-span-7 space-y-4">
+            <!-- Stats overview -->
+            <div id="qa-stats" class="grid grid-cols-3 gap-4 hidden">
+              <div class="glass-card p-4 rounded-xl border border-slate-800">
+                <div class="text-xs text-slate-400">Tổng Số Test Cases</div>
+                <div id="stat-total-tc" class="text-2xl font-bold text-white mt-1">-</div>
+              </div>
+              <div class="glass-card p-4 rounded-xl border border-slate-800">
+                <div class="text-xs text-slate-400">Độ Phủ Yêu Cầu (RTM)</div>
+                <div id="stat-coverage" class="text-2xl font-bold text-emerald-400 mt-1">100.0%</div>
+              </div>
+              <div class="glass-card p-4 rounded-xl border border-slate-800 flex items-center justify-end space-x-2">
+                <button onclick="downloadExcel()" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center space-x-1.5 shadow transition">
+                  <i class="fa-solid fa-file-excel"></i>
+                  <span>Tải Excel (.xlsx)</span>
+                </button>
+                <button onclick="downloadCSV()" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold flex items-center space-x-1.5 transition">
+                  <i class="fa-solid fa-file-csv"></i>
+                  <span>Tải CSV</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Test Cases Table -->
+            <div id="tc-results-card" class="glass-card rounded-2xl p-5 border border-slate-800 hidden">
+              <h3 class="text-sm font-semibold text-white mb-3 flex items-center space-x-2">
+                <i class="fa-solid fa-vial-circle-check text-blue-400"></i>
+                <span>Danh Sách Test Cases Sinh Ra (ISTQB Standard)</span>
+              </h3>
+              <div class="overflow-x-auto custom-scroll max-h-96">
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr class="border-b border-slate-700 bg-slate-900/60 text-slate-300">
+                      <th class="p-2.5 font-semibold">Test ID</th>
+                      <th class="p-2.5 font-semibold">Phân Loại (Category)</th>
+                      <th class="p-2.5 font-semibold">Tiêu Đề Kịch Bản</th>
+                      <th class="p-2.5 font-semibold">Mức Độ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tc-table-body" class="divide-y divide-slate-800 text-slate-300">
+                    <!-- Dynamic Rows -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="qa-empty-state" class="glass-card rounded-2xl p-12 border border-slate-800 text-center flex flex-col items-center justify-center space-y-3">
+              <div class="w-16 h-16 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center text-2xl">
+                <i class="fa-solid fa-file-lines"></i>
+              </div>
+              <h3 class="font-semibold text-white">Chưa Có Dữ Liệu Phân Tích</h3>
+              <p class="text-xs text-slate-400 max-w-sm">Dán nội dung tài liệu PRD hoặc nhấn nút "Tải dữ liệu mẫu PRD" bên trên rồi nhấn nút phân tích.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 2: POM AUTOMATION CODEGEN ================= -->
+      <section id="tab-pom" class="space-y-6 hidden">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-bold text-white tracking-tight">Automation Test Code Synthesizer (Page Object Model)</h1>
+            <p class="text-sm text-slate-400">Tự động sinh trọn bộ khung test Playwright có tích hợp Vòng lặp Agentic Tự sửa lỗi cú pháp (AST Dry-Run).</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div class="lg:col-span-4 glass-card rounded-2xl p-5 border border-slate-800 space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Tên Tính Năng (Feature Name)</label>
+              <input type="text" id="pom-feature-name" value="User Checkout" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Ngôn Ngữ Kiểm Thử</label>
+              <select id="pom-language" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                <option value="python">Playwright (Python) + PyTest</option>
+                <option value="typescript">Playwright (TypeScript)</option>
+              </select>
+            </div>
+
+            <button onclick="generatePOMScripts()" id="btn-gen-pom" class="w-full py-3 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-semibold text-sm transition shadow-lg shadow-teal-500/25 flex items-center justify-center space-x-2">
+              <i class="fa-solid fa-code"></i>
+              <span>Sinh Mã Nguồn POM (Verified AST)</span>
+            </button>
+          </div>
+
+          <div class="lg:col-span-8 space-y-4">
+            <div id="pom-editor-card" class="glass-card rounded-2xl p-5 border border-slate-800 hidden space-y-3">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex space-x-2" id="pom-file-tabs">
+                  <!-- File tabs injected dynamically -->
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span class="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                    <i class="fa-solid fa-shield-halved mr-1"></i> AST Verified Valid
+                  </span>
+                  <button onclick="copyCodeContent()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
+                    <i class="fa-regular fa-copy mr-1"></i> Copy
+                  </button>
+                </div>
+              </div>
+              <pre class="bg-slate-950 p-4 rounded-xl overflow-x-auto text-xs text-blue-300 font-mono max-h-[480px] custom-scroll leading-relaxed"><code id="pom-code-display">// Mã nguồn POM sinh ra sẽ xuất hiện tại đây...</code></pre>
+            </div>
+
+            <div id="pom-empty-state" class="glass-card rounded-2xl p-12 border border-slate-800 text-center flex flex-col items-center justify-center space-y-3">
+              <div class="w-16 h-16 rounded-2xl bg-teal-500/10 text-teal-400 flex items-center justify-center text-2xl">
+                <i class="fa-solid fa-code"></i>
+              </div>
+              <h3 class="font-semibold text-white">Chưa Có Mã Nguồn POM</h3>
+              <p class="text-xs text-slate-400 max-w-sm">Chọn ngôn ngữ và nhấn "Sinh Mã Nguồn POM" để tạo trọn bộ BasePage, PageObject và kịch bản Test.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 3: SYNTHETIC TEST DATA ================= -->
+      <section id="tab-synthetic" class="space-y-6 hidden">
+        <div>
+          <h1 class="text-2xl font-bold text-white tracking-tight">Synthetic Test Fixture Generator</h1>
+          <p class="text-sm text-slate-400">Tự động sinh dữ liệu mock (Hợp lệ, Ca biên, Ca lỗi, Payload bảo mật) từ Schema của OpenAPI.</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div class="lg:col-span-5 glass-card rounded-2xl p-5 border border-slate-800 space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Endpoint Target</label>
+              <input type="text" id="synth-endpoint" value="/api/users/register" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 font-mono">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">OpenAPI Schema JSON (Properties & Validation)</label>
+              <textarea id="synth-schema" rows="11" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono custom-scroll leading-relaxed"></textarea>
+            </div>
+
+            <button onclick="generateSyntheticData()" class="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold text-sm transition shadow-lg shadow-purple-500/25 flex items-center justify-center space-x-2">
+              <i class="fa-solid fa-wand-magic"></i>
+              <span>Sinh Bộ Dữ Liệu Mock (Faker Grounded)</span>
+            </button>
+          </div>
+
+          <div class="lg:col-span-7 space-y-4">
+            <div id="synth-results" class="grid grid-cols-1 md:grid-cols-2 gap-4 hidden">
+              <div class="glass-card p-4 rounded-xl border border-slate-800 space-y-2">
+                <div class="text-xs font-semibold text-emerald-400 flex items-center space-x-1.5">
+                  <i class="fa-solid fa-check"></i>
+                  <span>Valid Payload (Happy Path)</span>
+                </div>
+                <pre class="bg-slate-950 p-3 rounded-lg text-[11px] text-emerald-300 font-mono overflow-x-auto custom-scroll max-h-40" id="synth-valid"></pre>
+              </div>
+
+              <div class="glass-card p-4 rounded-xl border border-slate-800 space-y-2">
+                <div class="text-xs font-semibold text-amber-400 flex items-center space-x-1.5">
+                  <i class="fa-solid fa-arrows-left-right"></i>
+                  <span>Boundary Payload (Min/Max)</span>
+                </div>
+                <pre class="bg-slate-950 p-3 rounded-lg text-[11px] text-amber-300 font-mono overflow-x-auto custom-scroll max-h-40" id="synth-boundary"></pre>
+              </div>
+
+              <div class="glass-card p-4 rounded-xl border border-slate-800 space-y-2">
+                <div class="text-xs font-semibold text-rose-400 flex items-center space-x-1.5">
+                  <i class="fa-solid fa-ban"></i>
+                  <span>Invalid Payload (Validation Reject)</span>
+                </div>
+                <pre class="bg-slate-950 p-3 rounded-lg text-[11px] text-rose-300 font-mono overflow-x-auto custom-scroll max-h-40" id="synth-invalid"></pre>
+              </div>
+
+              <div class="glass-card p-4 rounded-xl border border-slate-800 space-y-2">
+                <div class="text-xs font-semibold text-red-500 flex items-center space-x-1.5">
+                  <i class="fa-solid fa-bug"></i>
+                  <span>Security Payload (SQLi / XSS)</span>
+                </div>
+                <pre class="bg-slate-950 p-3 rounded-lg text-[11px] text-red-400 font-mono overflow-x-auto custom-scroll max-h-40" id="synth-security"></pre>
+              </div>
+            </div>
+
+            <div id="synth-empty-state" class="glass-card rounded-2xl p-12 border border-slate-800 text-center flex flex-col items-center justify-center space-y-3">
+              <div class="w-16 h-16 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-2xl">
+                <i class="fa-solid fa-flask"></i>
+              </div>
+              <h3 class="font-semibold text-white">Chưa Sinh Test Data</h3>
+              <p class="text-xs text-slate-400 max-w-sm">Nhấn nút bên cạnh để xem AI tự động tạo các tập dữ liệu giả lập cho kiểm thử.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 4: CODEBASE Q&A & MERMAID FLOW ================= -->
+      <section id="tab-codebase" class="space-y-6 hidden">
+        <div>
+          <h1 class="text-2xl font-bold text-white tracking-tight">Codebase Architecture Q&A & Sơ Đồ Mermaid</h1>
+          <p class="text-sm text-slate-400">Hỏi đáp kiến trúc mã nguồn lớn (C# ASP.NET, Java Spring Boot, React) và tự động sinh Sơ đồ tuần tự tương tác giữa các tầng.</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div class="lg:col-span-5 glass-card rounded-2xl p-5 border border-slate-800 space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Câu Hỏi Về Kiến Trúc / Luồng Xử Lý</label>
+              <input type="text" id="codebase-query" value="Luồng checkout diễn ra qua các tầng Controller, Service và Repository như thế nào?" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Mã Nguồn Mẫu (C# Controller & Service)</label>
+              <textarea id="codebase-sample" rows="10" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono custom-scroll leading-relaxed"></textarea>
+            </div>
+
+            <button onclick="askCodebase()" id="btn-ask-code" class="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold text-sm transition shadow-lg shadow-blue-500/25 flex items-center justify-center space-x-2">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <span>Truy Vết Call-Graph & Vẽ Sơ Đồ Mermaid</span>
+            </button>
+          </div>
+
+          <div class="lg:col-span-7 space-y-4">
+            <div id="codebase-results-card" class="glass-card rounded-2xl p-5 border border-slate-800 hidden space-y-4">
+              <div>
+                <h3 class="text-sm font-semibold text-white mb-2 flex items-center space-x-2">
+                  <i class="fa-solid fa-sitemap text-cyan-400"></i>
+                  <span>Sơ Đồ Tuần Tự (Mermaid Sequence Diagram)</span>
+                </h3>
+                <div id="mermaid-container" class="bg-slate-950 p-4 rounded-xl border border-slate-800 overflow-x-auto text-center"></div>
+              </div>
+
+              <div>
+                <h3 class="text-sm font-semibold text-white mb-1.5 flex items-center space-x-2">
+                  <i class="fa-solid fa-align-left text-blue-400"></i>
+                  <span>Giải Thích Luồng Kiến Trúc</span>
+                </h3>
+                <div id="codebase-explanation" class="text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-4 rounded-xl border border-slate-800/80 whitespace-pre-line"></div>
+              </div>
+            </div>
+
+            <div id="codebase-empty-state" class="glass-card rounded-2xl p-12 border border-slate-800 text-center flex flex-col items-center justify-center space-y-3">
+              <div class="w-16 h-16 rounded-2xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center text-2xl">
+                <i class="fa-solid fa-diagram-project"></i>
+              </div>
+              <h3 class="font-semibold text-white">Chưa Có Truy Vấn Kiến Trúc</h3>
+              <p class="text-xs text-slate-400 max-w-sm">Nhập câu hỏi và nhấn "Truy Vết Call-Graph" để xem sơ đồ tương tác giữa các tầng.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 5: CI/CD PR BOT ================= -->
+      <section id="tab-prbot" class="space-y-6 hidden">
+        <div>
+          <h1 class="text-2xl font-bold text-white tracking-tight">GitHub Action PR Impact Analysis Bot</h1>
+          <p class="text-sm text-slate-400">Phân tích trực tiếp chuỗi git diff khi lập trình viên mở Pull Request để đánh giá phạm vi ảnh hưởng và gợi ý test hồi quy.</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div class="lg:col-span-5 glass-card rounded-2xl p-5 border border-slate-800 space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Tiêu Đề Pull Request</label>
+              <input type="text" id="pr-title" value="Feat: Refactor Order Payment & Checkout Logic" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Chuỗi Git Diff (Unified Diff)</label>
+              <textarea id="pr-diff-content" rows="11" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono custom-scroll leading-relaxed"></textarea>
+            </div>
+
+            <button onclick="analyzePRDiff()" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold text-sm transition shadow-lg shadow-amber-500/25 flex items-center justify-center space-x-2">
+              <i class="fa-solid fa-code-pull-request"></i>
+              <span>Phân Tích Tác Động Pull Request</span>
+            </button>
+          </div>
+
+          <div class="lg:col-span-7 space-y-4">
+            <div id="pr-result-card" class="glass-card rounded-2xl p-5 border border-slate-800 hidden space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <span class="text-xs font-semibold text-amber-400 uppercase tracking-wider">GitHub Comment Preview</span>
+                <span class="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 font-mono">PR #42</span>
+              </div>
+              <div id="pr-comment-preview" class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs text-slate-200 font-mono whitespace-pre-wrap leading-relaxed"></div>
+            </div>
+
+            <div id="pr-empty-state" class="glass-card rounded-2xl p-12 border border-slate-800 text-center flex flex-col items-center justify-center space-y-3">
+              <div class="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center text-2xl">
+                <i class="fa-solid fa-robot"></i>
+              </div>
+              <h3 class="font-semibold text-white">Chưa Phân Tích Pull Request</h3>
+              <p class="text-xs text-slate-400 max-w-sm">Nhấn nút bên cạnh để xem báo cáo tác động mã nguồn và các test suite hồi quy được gợi ý.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- JAVASCRIPT APP LOGIC -->
+  <script>
+    mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+    let currentTestSuite = null;
+    let currentPOMFiles = [];
+    let activePOMFileIdx = 0;
+
+    // TAB SWITCHING
+    function switchTab(tabId) {
+      const tabs = ['qa', 'pom', 'synthetic', 'codebase', 'prbot'];
+      tabs.forEach(t => {
+        document.getElementById(`tab-${t}`).classList.add('hidden');
+        const btn = document.getElementById(`tab-btn-${t}`);
+        btn.classList.remove('text-white', 'bg-blue-600', 'shadow-md', 'shadow-blue-600/30');
+        btn.classList.add('text-slate-400');
+      });
+
+      document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+      const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+      activeBtn.classList.remove('text-slate-400');
+      activeBtn.classList.add('text-white', 'bg-blue-600', 'shadow-md', 'shadow-blue-600/30');
+    }
+
+    // SAMPLE DATA LOADERS
+    const SAMPLE_PRD_TEXT = `# Tính năng Đặt Hàng & Thanh Toán (Checkout)
+
+## User Story: Khách hàng hoàn tất thanh toán
+As a registered customer, I want to checkout my cart, so that I receive my items.
+
+### Acceptance Criteria:
+- Given giỏ hàng có sản phẩm và tổng tiền > 0 When khách hàng bấm Đặt hàng Then hệ thống xác nhận đơn hàng thành công 200 OK.
+- Given giỏ hàng rỗng When khách hàng bấm Đặt hàng Then hệ thống chặn và hiển thị lỗi 'Giỏ hàng không được để trống'.
+- Given thẻ tín dụng hết hạn hoặc số thẻ không hợp lệ When gửi yêu cầu thanh toán Then hệ thống báo lỗi 400 'Thẻ thanh toán không hợp lệ'.`;
+
+    const SAMPLE_SCHEMA_TEXT = `{
+  "type": "object",
+  "required": ["email", "age", "role"],
+  "properties": {
+    "email": { "type": "string", "format": "email" },
+    "age": { "type": "integer", "minimum": 18, "maximum": 65 },
+    "role": { "type": "string", "enum": ["admin", "member", "guest"] }
+  }
+}`;
+
+    const SAMPLE_CODE_TEXT = `using Microsoft.AspNetCore.Mvc;
+
+public class OrderController : ControllerBase {
+    private readonly IOrderService _orderService;
+    public OrderController(IOrderService orderService) { _orderService = orderService; }
+
+    [HttpPost("checkout")]
+    public async Task<IActionResult> Checkout(CheckoutRequest req) {
+        var res = await _orderService.ProcessPaymentAsync(req);
+        return Ok(res);
+    }
+}`;
+
+    const SAMPLE_DIFF_TEXT = `diff --git a/Services/OrderService.cs b/Services/OrderService.cs
+--- a/Services/OrderService.cs
++++ b/Services/OrderService.cs
+@@ -10,3 +10,4 @@
++ public async Task ProcessPaymentAsync(Request req) { return await _repo.SaveAsync(req); }`;
+
+    function loadSamplePRD() {
+      document.getElementById('prd-content').value = SAMPLE_PRD_TEXT;
+    }
+
+    // INIT DEFAULTS
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('prd-content').value = SAMPLE_PRD_TEXT;
+      document.getElementById('synth-schema').value = SAMPLE_SCHEMA_TEXT;
+      document.getElementById('codebase-sample').value = SAMPLE_CODE_TEXT;
+      document.getElementById('pr-diff-content').value = SAMPLE_DIFF_TEXT;
+    });
+
+    // API 1: GENERATE TEST CASES
+    async function generateTestCases() {
+      const prdContent = document.getElementById('prd-content').value;
+      const filename = document.getElementById('prd-filename').value;
+      const btn = document.getElementById('btn-gen-tc');
+      
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Đang Phân Tích...`;
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/v1/qa/generate-test-cases', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prd_content: prdContent, filename: filename })
+        });
+        const data = await res.json();
+        currentTestSuite = data.test_suite;
+
+        // Render Stats
+        document.getElementById('qa-empty-state').classList.add('hidden');
+        document.getElementById('qa-stats').classList.remove('hidden');
+        document.getElementById('tc-results-card').classList.remove('hidden');
+        
+        document.getElementById('stat-total-tc').innerText = data.test_suite.total_test_cases;
+        document.getElementById('stat-coverage').innerText = `${data.rtm_matrix.coverage_percentage}%`;
+
+        // Render Table
+        const tbody = document.getElementById('tc-table-body');
+        tbody.innerHTML = '';
+        data.test_suite.test_cases.forEach(tc => {
+          let badgeColor = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+          if (tc.category.includes('Boundary')) badgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+          if (tc.category.includes('Negative')) badgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+          if (tc.category.includes('Security')) badgeColor = 'bg-red-500/10 text-red-400 border-red-500/20';
+
+          const row = document.createElement('tr');
+          row.className = 'hover:bg-slate-800/40 transition';
+          row.innerHTML = `
+            <td class="p-2.5 font-mono font-bold text-slate-200">${tc.id}</td>
+            <td class="p-2.5"><span class="px-2 py-0.5 rounded text-[10px] font-medium border ${badgeColor}">${tc.category}</span></td>
+            <td class="p-2.5 text-slate-200 font-medium">${tc.title}</td>
+            <td class="p-2.5 text-slate-400">${tc.priority}</td>
+          `;
+          tbody.appendChild(row);
+        });
+      } catch (err) {
+        alert("Lỗi khi gọi API: " + err);
+      } finally {
+        btn.innerHTML = `<i class="fa-solid fa-bolt mr-2"></i> Phân Tích & Sinh Kịch Bản Kiểm Thử`;
+        btn.disabled = false;
+      }
+    }
+
+    // EXPORT DOWNLOADS
+    async function downloadExcel() {
+      if (!currentTestSuite) return;
+      const res = await fetch('/api/v1/qa/export-excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentTestSuite)
+      });
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${currentTestSuite.feature_title.replace(/\\s+/g, '_')}_TestCases.xlsx`;
+      a.click();
+    }
+
+    async function downloadCSV() {
+      if (!currentTestSuite) return;
+      const res = await fetch('/api/v1/qa/export-csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentTestSuite)
+      });
+      const text = await res.text();
+      const blob = new Blob([text], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${currentTestSuite.feature_title.replace(/\\s+/g, '_')}_TestCases.csv`;
+      a.click();
+    }
+
+    // API 2: GENERATE POM SCRIPTS
+    async function generatePOMScripts() {
+      const feature = document.getElementById('pom-feature-name').value;
+      const lang = document.getElementById('pom-language').value;
+      const btn = document.getElementById('btn-gen-pom');
+
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Đang Biên Dịch & Chạy AST...`;
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/v1/qa/generate-pom-scripts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feature_name: feature, language: lang })
+        });
+        const data = await res.json();
+        currentPOMFiles = data.files;
+
+        document.getElementById('pom-empty-state').classList.add('hidden');
+        document.getElementById('pom-editor-card').classList.remove('hidden');
+
+        // Render Tabs
+        const tabContainer = document.getElementById('pom-file-tabs');
+        tabContainer.innerHTML = '';
+        currentPOMFiles.forEach((file, idx) => {
+          const tBtn = document.createElement('button');
+          tBtn.className = `text-xs px-3 py-1.5 rounded-lg font-mono transition ${idx === 0 ? 'bg-blue-600 text-white font-medium' : 'text-slate-400 hover:bg-slate-800'}`;
+          tBtn.innerText = file.file_path;
+          tBtn.onclick = () => selectPOMFile(idx);
+          tBtn.id = `pom-tab-${idx}`;
+          tabContainer.appendChild(tBtn);
+        });
+
+        selectPOMFile(0);
+      } catch (err) {
+        alert("Lỗi khi sinh POM: " + err);
+      } finally {
+        btn.innerHTML = `<i class="fa-solid fa-code mr-2"></i> Sinh Mã Nguồn POM (Verified AST)`;
+        btn.disabled = false;
+      }
+    }
+
+    function selectPOMFile(idx) {
+      activePOMFileIdx = idx;
+      currentPOMFiles.forEach((_, i) => {
+        const btn = document.getElementById(`pom-tab-${i}`);
+        if (i === idx) {
+          btn.className = 'text-xs px-3 py-1.5 rounded-lg font-mono transition bg-blue-600 text-white font-medium';
+        } else {
+          btn.className = 'text-xs px-3 py-1.5 rounded-lg font-mono transition text-slate-400 hover:bg-slate-800';
+        }
+      });
+      document.getElementById('pom-code-display').innerText = currentPOMFiles[idx].content;
+    }
+
+    function copyCodeContent() {
+      if (currentPOMFiles.length > 0) {
+        navigator.clipboard.writeText(currentPOMFiles[activePOMFileIdx].content);
+        alert("Đã sao chép mã nguồn vào Clipboard!");
+      }
+    }
+
+    // API 3: SYNTHETIC DATA
+    async function generateSyntheticData() {
+      const endpoint = document.getElementById('synth-endpoint').value;
+      const schemaStr = document.getElementById('synth-schema').value;
+
+      try {
+        const schema = JSON.parse(schemaStr);
+        const res = await fetch('/api/v1/qa/synthetic-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ schema_definition: schema, endpoint_path: endpoint })
+        });
+        const data = await res.json();
+
+        document.getElementById('synth-empty-state').classList.add('hidden');
+        document.getElementById('synth-results').classList.remove('hidden');
+
+        document.getElementById('synth-valid').innerText = JSON.stringify(data.valid_payloads[0], null, 2);
+        document.getElementById('synth-boundary').innerText = JSON.stringify(data.boundary_payloads[0], null, 2);
+        document.getElementById('synth-invalid').innerText = JSON.stringify(data.invalid_payloads[0], null, 2);
+        document.getElementById('synth-security').innerText = JSON.stringify(data.security_payloads[0], null, 2);
+      } catch (e) {
+        alert("JSON Schema không hợp lệ: " + e);
+      }
+    }
+
+    // API 4: CODEBASE Q&A & MERMAID
+    async function askCodebase() {
+      const query = document.getElementById('codebase-query').value;
+      const sampleCode = document.getElementById('codebase-sample').value;
+      const btn = document.getElementById('btn-ask-code');
+
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Đang Lập Chỉ Mục & Vẽ Sơ Đồ...`;
+      btn.disabled = true;
+
+      try {
+        // Step 1: Index sample code
+        await fetch('/api/v1/codebase/index', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            files: [{ file_path: "Controllers/OrderController.cs", content: sampleCode }]
+          })
+        });
+
+        // Step 2: Query architecture
+        const res = await fetch('/api/v1/codebase/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: query, top_k: 3 })
+        });
+        const data = await res.json();
+
+        document.getElementById('codebase-empty-state').classList.add('hidden');
+        document.getElementById('codebase-results-card').classList.remove('hidden');
+
+        document.getElementById('codebase-explanation').innerText = data.detailed_explanation;
+
+        // Render Mermaid Diagram
+        const mContainer = document.getElementById('mermaid-container');
+        mContainer.innerHTML = '';
+        const id = 'mermaid-svg-' + Date.now();
+        const { svg } = await mermaid.render(id, data.mermaid_diagram);
+        mContainer.innerHTML = svg;
+      } catch (err) {
+        alert("Lỗi truy vấn kiến trúc: " + err);
+      } finally {
+        btn.innerHTML = `<i class="fa-solid fa-magnifying-glass mr-2"></i> Truy Vết Call-Graph & Vẽ Sơ Đồ Mermaid`;
+        btn.disabled = false;
+      }
+    }
+
+    // API 5: PR BOT DIFF
+    async function analyzePRDiff() {
+      const title = document.getElementById('pr-title').value;
+      const diff = document.getElementById('pr-diff-content').value;
+
+      try {
+        const res = await fetch('/api/v1/pr/analyze-impact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pr_title: title, pr_number: 42, git_diff: diff })
+        });
+        const data = await res.json();
+
+        document.getElementById('pr-empty-state').classList.add('hidden');
+        document.getElementById('pr-result-card').classList.remove('hidden');
+
+        document.getElementById('pr-comment-preview').innerText = data.markdown_comment;
+      } catch (e) {
+        alert("Lỗi khi phân tích PR: " + e);
+      }
+    }
+  </script>
+</body>
+</html>

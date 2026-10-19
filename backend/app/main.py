@@ -1,5 +1,9 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+
 from app.core.config import settings
 from app.api.v1.qa_assistant import router as qa_router
 from app.api.v1.codebase_qa import router as codebase_router
@@ -20,17 +24,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/", tags=["Health"])
-async def root():
-    return {
-        "status": "online",
-        "service": "AI QA Assistant & Codebase Q&A",
-        "version": "1.0.0",
-        "environment": settings.ENVIRONMENT,
-    }
+# Locate static directory
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+@app.get("/", response_class=HTMLResponse, tags=["UI Dashboard"])
+def serve_dashboard():
+    """Serves the interactive single-page Web Dashboard."""
+    index_file = os.path.join(static_dir, "index.html")
+    if os.path.exists(index_file):
+        with open(index_file, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>AI QA Assistant API is online. Static dashboard not found.</h1>"
+
+@app.get("/dashboard", response_class=HTMLResponse, tags=["UI Dashboard"])
+def redirect_dashboard():
+    return serve_dashboard()
 
 @app.get("/health", tags=["Health"])
-async def health_check():
+def health_check():
     return {
         "status": "healthy",
         "qdrant": {
