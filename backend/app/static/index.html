@@ -1015,11 +1015,46 @@ As a registered customer, I want to checkout my cart, so that I receive my items
         const data = await res.json();
         document.getElementById('arch-explanation').innerText = data.detailed_explanation;
 
-        // Render Mermaid
+        // Render Mermaid Robust (handles v9 string/callback and v10+ object return)
         const target = document.getElementById('mermaid-flow-target');
         target.innerHTML = '';
-        const { svg } = await mermaid.render('mermaid-flow-svg-' + Date.now(), data.mermaid_diagram);
-        target.innerHTML = svg;
+        
+        try {
+          const renderId = 'mermaid-flow-svg-' + Math.floor(Math.random() * 1000000);
+          let svgCode = null;
+
+          if (typeof mermaid !== 'undefined') {
+            const raw = mermaid.render(renderId, data.mermaid_diagram, (cbSvg) => {
+              svgCode = cbSvg;
+            });
+
+            if (typeof raw === 'string') {
+              svgCode = raw;
+            } else if (raw && typeof raw.then === 'function') {
+              const asyncRes = await raw;
+              if (typeof asyncRes === 'string') svgCode = asyncRes;
+              else if (asyncRes && asyncRes.svg) svgCode = asyncRes.svg;
+            } else if (raw && raw.svg) {
+              svgCode = raw.svg;
+            }
+          }
+
+          if (svgCode) {
+            target.innerHTML = svgCode;
+          } else {
+            // Direct declarative mermaid element rendering
+            target.innerHTML = `<div class="mermaid">${data.mermaid_diagram}</div>`;
+            if (typeof mermaid !== 'undefined' && typeof mermaid.init === 'function') {
+              mermaid.init(undefined, target.querySelectorAll('.mermaid'));
+            }
+          }
+        } catch (mErr) {
+          console.warn("Mermaid render error:", mErr);
+          target.innerHTML = `<div class="mermaid">${data.mermaid_diagram}</div>`;
+          if (typeof mermaid !== 'undefined' && typeof mermaid.init === 'function') {
+            try { mermaid.init(undefined, target.querySelectorAll('.mermaid')); } catch (_) {}
+          }
+        }
       } catch (err) {
         alert("Lỗi: " + err);
       } finally {
