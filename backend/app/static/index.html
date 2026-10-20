@@ -143,8 +143,9 @@
             </span>
             <span class="text-[10px] text-slate-500 font-mono">Markdown Mode</span>
           </div>
-          <div id="monaco-prd-editor" class="flex-1 w-full bg-slate-950 relative">
-            <textarea id="prd-fallback-textarea" class="w-full h-full bg-slate-950 p-4 font-mono text-xs text-slate-200 outline-none resize-none leading-relaxed" placeholder="Đang nạp Monaco Editor..."># Tính năng Đặt Hàng & Thanh Toán (Checkout)
+          <div class="flex-1 w-full bg-slate-950 relative overflow-hidden">
+            <div id="monaco-prd-editor" class="w-full h-full"></div>
+            <textarea id="prd-fallback-textarea" class="w-full h-full bg-slate-950 p-4 font-mono text-xs text-slate-200 outline-none resize-none leading-relaxed" placeholder="Nhập hoặc dán nội dung PRD/User Story tại đây..."># Tính năng Đặt Hàng & Thanh Toán (Checkout)
 
 ## User Story: Khách hàng hoàn tất thanh toán
 As a registered customer, I want to checkout my cart, so that I receive my items.
@@ -525,8 +526,11 @@ As a registered customer, I want to checkout my cart, so that I receive my items
         require(['vs/editor/editor.main'], function () {
           try {
             // 1. PRD Editor
+            const fallbackEl = document.getElementById('prd-fallback-textarea');
+            const initialPRD = (fallbackEl && fallbackEl.value.trim()) ? fallbackEl.value : SAMPLE_PRD;
+
             window.prdEditor = monaco.editor.create(document.getElementById('monaco-prd-editor'), {
-              value: SAMPLE_PRD,
+              value: initialPRD,
               language: 'markdown',
               theme: 'vs-dark',
               minimap: { enabled: false },
@@ -536,6 +540,14 @@ As a registered customer, I want to checkout my cart, so that I receive my items
               scrollBeyondLastLine: false,
             });
             prdEditor = window.prdEditor;
+
+            // Hide fallback textarea once Monaco successfully mounts
+            if (fallbackEl) fallbackEl.style.display = 'none';
+
+            // Sync Monaco content to fallback textarea
+            window.prdEditor.onDidChangeModelContent(() => {
+              if (fallbackEl) fallbackEl.value = window.prdEditor.getValue();
+            });
 
             // 2. POM Code Editor
             window.pomEditor = monaco.editor.create(document.getElementById('monaco-pom-container'), {
@@ -630,10 +642,19 @@ As a registered customer, I want to checkout my cart, so that I receive my items
     function loadSamplePRD() {
       if (window.prdEditor && typeof window.prdEditor.setValue === 'function') {
         window.prdEditor.setValue(SAMPLE_PRD);
-      } else {
-        const el = document.getElementById('prd-fallback-textarea');
-        if (el) el.value = SAMPLE_PRD;
       }
+      const el = document.getElementById('prd-fallback-textarea');
+      if (el) el.value = SAMPLE_PRD;
+    }
+
+    function getPRDContent() {
+      if (window.prdEditor && typeof window.prdEditor.getValue === 'function') {
+        const val = window.prdEditor.getValue();
+        if (val && val.trim()) return val;
+      }
+      const el = document.getElementById('prd-fallback-textarea');
+      if (el && el.value && el.value.trim()) return el.value;
+      return SAMPLE_PRD;
     }
 
     // SUB-TAB SWITCHER FOR TAB 1
@@ -660,21 +681,16 @@ As a registered customer, I want to checkout my cart, so that I receive my items
     let lastRTMMatrix = null;
 
     async function generateTestCases() {
-      let content = SAMPLE_PRD;
-      if (window.prdEditor && typeof window.prdEditor.getValue === 'function') {
-        content = window.prdEditor.getValue();
-      } else {
-        const el = document.getElementById('prd-fallback-textarea');
-        if (el && el.value) content = el.value;
-      }
+      const content = getPRDContent();
       const btn = document.getElementById('btn-generate-tc');
       btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang Phân Tích...`;
+      btn.disabled = true;
 
       try {
         const res = await fetch('/api/v1/qa/generate-test-cases', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prd_content: content, filename: "Checkout.md" })
+          body: JSON.stringify({ prd_content: content, filename: "Feature_PRD.md" })
         });
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
@@ -735,6 +751,7 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       } catch (err) {
         alert("Lỗi phân tích PRD: " + (err.message || err));
       } finally {
+        btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-play"></i> <span>Phân Tích & Sinh Test Suite</span>`;
       }
     }
