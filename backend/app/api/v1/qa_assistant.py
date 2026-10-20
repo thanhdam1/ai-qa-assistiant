@@ -213,26 +213,31 @@ def run_live_test(request: RunTestRequest):
             except Exception:
                 pass
 
+import urllib.parse
 @router.post("/export-excel", summary="Export Test Suite to Excel (.xlsx)")
 def export_excel(test_suite: TestSuite):
     excel_bytes = ExportService.to_excel_bytes(test_suite)
-    filename = f"{test_suite.feature_title.replace(' ', '_')}_TestCases.xlsx"
+    safe_ascii = "".join(c for c in test_suite.feature_title if c.isascii() and (c.isalnum() or c in ("-", "_", " "))).strip().replace(" ", "_")
+    ascii_name = f"{safe_ascii or 'TestSuite'}_TestCases.xlsx"
+    encoded_name = urllib.parse.quote(f"{test_suite.feature_title}_TestCases.xlsx")
 
     return StreamingResponse(
         io.BytesIO(excel_bytes),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={"Content-Disposition": f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded_name}'}
     )
 
 @router.post("/export-csv", summary="Export Test Suite to CSV")
 def export_csv(test_suite: TestSuite):
     csv_str = ExportService.to_csv(test_suite)
-    filename = f"{test_suite.feature_title.replace(' ', '_')}_TestCases.csv"
+    safe_ascii = "".join(c for c in test_suite.feature_title if c.isascii() and (c.isalnum() or c in ("-", "_", " "))).strip().replace(" ", "_")
+    ascii_name = f"{safe_ascii or 'TestSuite'}_TestCases.csv"
+    encoded_name = urllib.parse.quote(f"{test_suite.feature_title}_TestCases.csv")
 
     return Response(
         content=csv_str,
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded_name}'}
     )
 
 @router.websocket("/ws/runner")

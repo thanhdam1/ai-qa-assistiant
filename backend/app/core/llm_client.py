@@ -50,12 +50,7 @@ class LLMClient:
         if provider == "anthropic" and settings.ANTHROPIC_API_KEY:
             return cls._call_anthropic(sanitized_prompt, system_instruction, temperature)
 
-        # If provider is ollama or has local URL configured, attempt local Ollama fallback
-        if settings.OLLAMA_BASE_URL:
-            local_res = cls._call_ollama(sanitized_prompt, system_instruction, temperature, json_mode)
-            if local_res:
-                return local_res
-
+        # Fallback to deterministic algorithmic generator
         logger.debug("[LLMClient] No live LLM provider available or configured. Yielding None for heuristic fallback.")
         return None
 

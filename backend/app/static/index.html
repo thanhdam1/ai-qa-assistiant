@@ -158,12 +158,19 @@ As a registered customer, I want to checkout my cart, so that I receive my items
 
         <!-- Right: Results & RTM Explorer -->
         <div class="lg:col-span-7 flex flex-col glass-panel rounded-2xl border border-slate-800/80 overflow-hidden">
-          <!-- Stats Bar -->
+          <!-- Stats Bar & Sub-tab Switcher -->
           <div class="h-12 bg-slate-900/90 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs">
-            <div class="flex items-center space-x-4">
-              <span class="text-slate-400">Test Cases: <b id="stat-tc-count" class="text-white font-mono">0</b></span>
-              <span class="text-slate-400">Coverage RTM: <b id="stat-rtm-cov" class="text-emerald-400 font-mono">0%</b></span>
-              <span class="text-slate-400">Traceability: <b class="text-blue-400 font-mono">100% Verified</b></span>
+            <div class="flex items-center space-x-2">
+              <button onclick="switchTab1View('tc')" id="subnav-tc" class="px-2.5 py-1 rounded-md bg-blue-600 text-white font-semibold transition flex items-center space-x-1.5 shadow-sm">
+                <i class="fa-solid fa-list-check"></i>
+                <span>Test Cases</span>
+                <span id="stat-tc-count" class="bg-blue-800/80 text-blue-200 px-1.5 py-0.2 rounded-full font-mono text-[10px]">0</span>
+              </button>
+              <button onclick="switchTab1View('rtm')" id="subnav-rtm" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition flex items-center space-x-1.5">
+                <i class="fa-solid fa-table-cells"></i>
+                <span>Ma Trận RTM</span>
+                <span id="stat-rtm-cov" class="bg-emerald-950 text-emerald-400 border border-emerald-800/40 px-1.5 py-0.2 rounded-full font-mono text-[10px]">0%</span>
+              </button>
             </div>
             <div class="flex items-center space-x-2">
               <button onclick="downloadExcel()" id="btn-dl-excel" class="opacity-50 pointer-events-none text-xs px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center space-x-1 transition">
@@ -177,8 +184,8 @@ As a registered customer, I want to checkout my cart, so that I receive my items
             </div>
           </div>
 
-          <!-- Table Container -->
-          <div class="flex-1 overflow-y-auto custom-scroll p-4">
+          <!-- View 1: Test Cases Table -->
+          <div id="view-tab1-tc" class="flex-1 overflow-y-auto custom-scroll p-4">
             <table class="w-full text-left text-xs border-collapse">
               <thead>
                 <tr class="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">
@@ -193,6 +200,29 @@ As a registered customer, I want to checkout my cart, so that I receive my items
                   <td colspan="4" class="py-16 text-center text-slate-500">
                     <i class="fa-solid fa-list-check text-2xl mb-2 block"></i>
                     Bấm nút "Phân Tích & Sinh Test Suite" để xem các kịch bản kiểm thử được sinh tự động.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- View 2: RTM Traceability Matrix Table -->
+          <div id="view-tab1-rtm" class="flex-1 overflow-y-auto custom-scroll p-4 hidden">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">
+                  <th class="pb-2 font-semibold">Yêu Cầu (AC ID)</th>
+                  <th class="pb-2 font-semibold">User Story</th>
+                  <th class="pb-2 font-semibold">Tiêu Chí Chấp Nhận (Gherkin/Spec)</th>
+                  <th class="pb-2 font-semibold">Test Cases Liên Kết (RTM)</th>
+                  <th class="pb-2 font-semibold">Độ Phủ</th>
+                </tr>
+              </thead>
+              <tbody id="rtm-table-body" class="divide-y divide-slate-800/60 text-slate-300">
+                <tr>
+                  <td colspan="5" class="py-16 text-center text-slate-500">
+                    <i class="fa-solid fa-table-cells text-2xl mb-2 block"></i>
+                    Bấm nút "Phân Tích & Sinh Test Suite" để xây dựng ma trận RTM và phân tích Gap Coverage.
                   </td>
                 </tr>
               </tbody>
@@ -606,7 +636,29 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       }
     }
 
+    // SUB-TAB SWITCHER FOR TAB 1
+    function switchTab1View(view) {
+      const tcView = document.getElementById('view-tab1-tc');
+      const rtmView = document.getElementById('view-tab1-rtm');
+      const tcBtn = document.getElementById('subnav-tc');
+      const rtmBtn = document.getElementById('subnav-rtm');
+
+      if (view === 'tc') {
+        tcView.classList.remove('hidden');
+        rtmView.classList.add('hidden');
+        tcBtn.className = 'px-2.5 py-1 rounded-md bg-blue-600 text-white font-semibold transition flex items-center space-x-1.5 shadow-sm';
+        rtmBtn.className = 'px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition flex items-center space-x-1.5';
+      } else {
+        tcView.classList.add('hidden');
+        rtmView.classList.remove('hidden');
+        rtmBtn.className = 'px-2.5 py-1 rounded-md bg-blue-600 text-white font-semibold transition flex items-center space-x-1.5 shadow-sm';
+        tcBtn.className = 'px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition flex items-center space-x-1.5';
+      }
+    }
+
     let lastTestSuite = null;
+    let lastRTMMatrix = null;
+
     async function generateTestCases() {
       let content = SAMPLE_PRD;
       if (window.prdEditor && typeof window.prdEditor.getValue === 'function') {
@@ -624,15 +676,23 @@ As a registered customer, I want to checkout my cart, so that I receive my items
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prd_content: content, filename: "Checkout.md" })
         });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `Server trả về mã lỗi HTTP ${res.status}`);
+        }
         const data = await res.json();
         lastTestSuite = data.test_suite;
+        lastRTMMatrix = data.rtm_matrix;
 
+        // Update stats
         document.getElementById('stat-tc-count').innerText = data.test_suite.total_test_cases;
         document.getElementById('stat-rtm-cov').innerText = `${data.rtm_matrix.coverage_percentage}%`;
 
+        // Enable export buttons
         document.getElementById('btn-dl-excel').classList.remove('opacity-50', 'pointer-events-none');
         document.getElementById('btn-dl-csv').classList.remove('opacity-50', 'pointer-events-none');
 
+        // Render Test Cases Table
         const tbody = document.getElementById('tc-table-body');
         tbody.innerHTML = '';
         data.test_suite.test_cases.forEach(tc => {
@@ -651,8 +711,29 @@ As a registered customer, I want to checkout my cart, so that I receive my items
           `;
           tbody.appendChild(tr);
         });
+
+        // Render RTM Traceability Matrix Table
+        const rtmTbody = document.getElementById('rtm-table-body');
+        if (rtmTbody && data.rtm_matrix && data.rtm_matrix.entries) {
+          rtmTbody.innerHTML = '';
+          data.rtm_matrix.entries.forEach(entry => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-900/60 transition';
+            const tcBadges = entry.covered_test_case_ids.map(id =>
+              `<span class="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300 font-mono border border-blue-500/30 mr-1">${id}</span>`
+            ).join('');
+            tr.innerHTML = `
+              <td class="py-2.5 font-mono font-bold text-amber-400 whitespace-nowrap">${entry.ac_id}</td>
+              <td class="py-2.5 text-slate-300 font-medium">${entry.user_story_title}</td>
+              <td class="py-2.5 text-slate-200 max-w-md">${entry.ac_description}</td>
+              <td class="py-2.5">${tcBadges || '<span class="text-rose-400 text-[10px]">Chưa gắn test</span>'}</td>
+              <td class="py-2.5 whitespace-nowrap"><span class="px-2 py-0.5 rounded text-[10px] font-semibold border ${entry.is_covered ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}">${entry.is_covered ? '✓ 100% Phủ' : 'Thiếu Test Case'}</span></td>
+            `;
+            rtmTbody.appendChild(tr);
+          });
+        }
       } catch (err) {
-        alert("Lỗi: " + err);
+        alert("Lỗi phân tích PRD: " + (err.message || err));
       } finally {
         btn.innerHTML = `<i class="fa-solid fa-play"></i> <span>Phân Tích & Sinh Test Suite</span>`;
       }
