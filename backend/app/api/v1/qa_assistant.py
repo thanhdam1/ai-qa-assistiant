@@ -43,6 +43,8 @@ def generate_test_cases(request: GenerateTestRequest):
     test_suite = TestCaseGenerator.generate_from_prd(prd, api_spec=api_spec)
     rtm_matrix = RTMAgent.build_matrix(prd, test_suite)
 
+    print(f"[DEBUG generate_test_cases] Received {len(request.prd_content)} chars | US: {len(prd.user_stories)} | TCs: {test_suite.total_test_cases} | RTM: {rtm_matrix.coverage_percentage}%", flush=True)
+
     return GenerateTestResponse(
         test_suite=test_suite,
         rtm_matrix=rtm_matrix

@@ -43,7 +43,7 @@ class PRDParser:
         global_rules = []
         raw_sections: Dict[str, str] = {}
         
-        current_section = "Header"
+        current_section = "Overview"
         current_section_lines = []
         
         current_us: Optional[UserStory] = None
@@ -52,14 +52,16 @@ class PRDParser:
 
         for line in lines:
             stripped = line.strip()
+            if not stripped:
+                continue
             
             # Heading 1: Main Title
             if stripped.startswith("# "):
                 title = stripped.replace("#", "").strip()
                 continue
                 
-            # Heading 2 or 3: Sections or User Stories
-            if stripped.startswith("## ") or stripped.startswith("### "):
+            # Heading 2, 3, or 4: Sections or User Stories
+            if stripped.startswith("## ") or stripped.startswith("### ") or stripped.startswith("#### "):
                 if current_section_lines:
                     raw_sections[current_section] = "\n".join(current_section_lines).strip()
                     current_section_lines = []
@@ -89,14 +91,11 @@ class PRDParser:
                     continue
                 
                 # Extract Acceptance Criteria (Given-When-Then)
-                if any(prefix in stripped.lower() for prefix in ["ac:", "acceptance criteria", "- given", "* given", "tiêu chí"]):
-                    pass
-                
                 gherkin_match = re.search(r"given\s+(.+?)\s+when\s+(.+?)\s+then\s+(.+)", stripped, re.IGNORECASE)
                 if gherkin_match:
                     current_us.acceptance_criteria.append(AcceptanceCriteria(
                         id=f"AC-{ac_counter:02d}",
-                        description=stripped,
+                        description=stripped.lstrip("- *0123456789. "),
                         gherkin_given=gherkin_match.group(1).strip(),
                         gherkin_when=gherkin_match.group(2).strip(),
                         gherkin_then=gherkin_match.group(3).strip(),
@@ -104,10 +103,10 @@ class PRDParser:
                     ac_counter += 1
                     continue
                 
-                # Bullet acceptance criteria
-                if stripped.startswith(("- ", "* ", "1. ", "2. ", "3. ")) and len(stripped) > 5:
-                    clean_item = re.sub(r"^[-*\d.]+\s*", "", stripped)
-                    if any(term in clean_item.lower() for term in ["phải", "must", "should", "yêu cầu", "then", "khi", "when"]):
+                # Bullet or numbered acceptance criteria (non-gherkin)
+                if stripped.startswith(("- ", "* ", "+ ", "1. ", "2. ", "3. ", "4. ", "5. ")) and len(stripped) > 5:
+                    clean_item = re.sub(r"^[-*+\d.]+\s*", "", stripped).strip()
+                    if not any(prefix in clean_item.lower() for prefix in ["as a ", "i want", "so that"]):
                         current_us.acceptance_criteria.append(AcceptanceCriteria(
                             id=f"AC-{ac_counter:02d}",
                             description=clean_item
@@ -128,14 +127,28 @@ class PRDParser:
             
         # Fallback: If no explicit user stories were found, create a default one with the content
         if not user_stories:
+            fallback_acs = [
+                AcceptanceCriteria(id=f"AC-{i+1:02d}", description=line.strip("- *").strip())
+                for i, line in enumerate(lines) if line.strip().startswith(("- ", "* ", "1. ", "2. ")) and len(line.strip()) > 8
+            ]
+            if not fallback_acs:
+                fallback_acs = [
+                    AcceptanceCriteria(id="AC-01", description=f"Kiểm thử chức năng tổng quát của {title}")
+                ]
             user_stories.append(UserStory(
                 id="US-01",
                 title=title,
-                acceptance_criteria=[
-                    AcceptanceCriteria(id=f"AC-{i+1:02d}", description=line.strip("- *"))
-                    for i, line in enumerate(lines) if line.strip().startswith(("- ", "* ")) and len(line.strip()) > 8
-                ]
+                acceptance_criteria=fallback_acs
             ))
+        else:
+            # If user story exists but has no acceptance criteria, provide a default AC
+            for us in user_stories:
+                if not us.acceptance_criteria:
+                    us.acceptance_criteria.append(AcceptanceCriteria(
+                        id=f"AC-{ac_counter:02d}",
+                        description=f"Xác thực luồng chức năng của {us.title}"
+                    ))
+                    ac_counter += 1
 
         return ParsedPRD(
             title=title,
