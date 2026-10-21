@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.core.llm_client import LLMClient
 from app.parsers.prd_parser import ParsedPRD, UserStory
 from app.parsers.openapi_parser import ParsedOpenAPI, APIEndpoint
+from app.parsers.schema_extensions import ParsedGraphQLSchema, ParsedAsyncAPISpec
 
 class TestCase(BaseModel):
     id: str = Field(description="Unique Test ID e.g. TC-01")
@@ -210,3 +211,98 @@ class TestCaseGenerator:
 
         data = json.loads(response_str)
         return TestSuite(**data)
+
+    @classmethod
+    def generate_from_graphql(cls, schema: ParsedGraphQLSchema) -> TestSuite:
+        test_cases: List[TestCase] = []
+        tc_idx = 1
+        
+        for q in schema.queries:
+            test_cases.append(TestCase(
+                id=f"GQL-Q-{tc_idx:03d}",
+                title=f"[GraphQL Query] Execute query '{q.name}' with valid arguments",
+                category="Positive",
+                priority="High",
+                test_steps=[
+                    f"1. Construct GraphQL Query document for {q.name}",
+                    f"2. Send POST request with query payload to /graphql",
+                    f"3. Validate response data matches return type '{q.return_type}'"
+                ],
+                expected_result=f"Returns 200 OK with non-null '{q.name}' data payload without 'errors' block."
+            ))
+            tc_idx += 1
+
+        for m in schema.mutations:
+            test_cases.append(TestCase(
+                id=f"GQL-M-{tc_idx:03d}",
+                title=f"[GraphQL Mutation] Execute mutation '{m.name}' with valid input",
+                category="Positive",
+                priority="Critical",
+                test_steps=[
+                    f"1. Construct GraphQL Mutation document for {m.name}",
+                    f"2. Provide valid variable inputs {list(m.arguments.keys())}",
+                    f"3. Execute mutation and verify state change"
+                ],
+                expected_result=f"Mutation succeeds, returns '{m.return_type}' and database updates accordingly."
+            ))
+            tc_idx += 1
+            test_cases.append(TestCase(
+                id=f"GQL-M-{tc_idx:03d}",
+                title=f"[GraphQL Negative] Execute mutation '{m.name}' with missing required variables",
+                category="Negative",
+                priority="High",
+                test_steps=[
+                    f"1. Construct GraphQL Mutation for {m.name} omitting required arguments",
+                    f"2. Submit request to /graphql endpoint"
+                ],
+                expected_result="Returns 200/400 with 'errors' field detailing GRAPHQL_VALIDATION_FAILED."
+            ))
+            tc_idx += 1
+
+        return TestSuite(
+            feature_title=schema.title,
+            summary=f"GraphQL Test Suite for {len(schema.queries)} queries and {len(schema.mutations)} mutations.",
+            total_test_cases=len(test_cases),
+            test_cases=test_cases
+        )
+
+    @classmethod
+    def generate_from_asyncapi(cls, async_spec: ParsedAsyncAPISpec) -> TestSuite:
+        test_cases: List[TestCase] = []
+        tc_idx = 1
+
+        for ch in async_spec.channels:
+            op_label = "Produce" if ch.operation_type == "publish" else "Consume"
+            test_cases.append(TestCase(
+                id=f"ASYNC-{tc_idx:03d}",
+                title=f"[Event Broker] {op_label} message on channel '{ch.channel_name}'",
+                category="Positive",
+                priority="High",
+                test_steps=[
+                    f"1. Connect to Event Broker (Kafka/RabbitMQ)",
+                    f"2. {op_label} message '{ch.message_name}' to topic/queue '{ch.channel_name}'",
+                    f"3. Validate consumer receives and processes message successfully"
+                ],
+                expected_result="Message is acknowledged by broker and successfully processed with offset committed."
+            ))
+            tc_idx += 1
+            test_cases.append(TestCase(
+                id=f"ASYNC-{tc_idx:03d}",
+                title=f"[Event Schema Fuzzing] Malformed payload rejection on '{ch.channel_name}'",
+                category="Negative",
+                priority="High",
+                test_steps=[
+                    f"1. Construct payload violating '{ch.message_name}' JSON schema",
+                    f"2. Publish malformed message to channel '{ch.channel_name}'",
+                    f"3. Check Dead-Letter Queue (DLQ) routing"
+                ],
+                expected_result="Consumer rejects malformed event and routes to DLQ without crashing the consumer group."
+            ))
+            tc_idx += 1
+
+        return TestSuite(
+            feature_title=async_spec.title,
+            summary=f"AsyncAPI Event-Driven Test Suite covering {len(async_spec.channels)} channel operations.",
+            total_test_cases=len(test_cases),
+            test_cases=test_cases
+        )

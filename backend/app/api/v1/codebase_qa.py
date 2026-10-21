@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional
 
 from app.parsers.ast_parser import ASTParser
 from app.agents.codebase_agent import CodebaseArchitectureAgent, ArchitectureAnswer
+from app.rag.graph_rag import GraphRAGEngine
 
 router = APIRouter()
 
@@ -233,3 +234,24 @@ def list_symbols():
         "total_unique_symbols": len(codebase_agent.symbol_table),
         "symbols": list(codebase_agent.symbol_table.keys())[:50]
     }
+
+class ImpactTraceRequest(BaseModel):
+    symbol_name: str = Field(description="Symbol name to trace impact, e.g. OrderRepository or ProcessPaymentAsync")
+
+@router.post("/impact-trace", summary="GraphRAG Cross-Layer Impact Tracer")
+def trace_impact_endpoint(request: ImpactTraceRequest):
+    if not request.symbol_name.strip():
+        raise HTTPException(status_code=400, detail="Symbol name cannot be empty.")
+    engine = GraphRAGEngine()
+    engine.build_graph(list(codebase_agent.indexed_chunks.values()))
+    return engine.trace_impact(request.symbol_name)
+
+class TaintFlowRequest(BaseModel):
+    entry_endpoint: str = Field(description="Controller or Endpoint name, e.g. OrderController")
+
+@router.post("/taint-flow", summary="AST Data-Flow & Taint Analysis Tracer")
+def trace_taint_endpoint(request: TaintFlowRequest):
+    if not request.entry_endpoint.strip():
+        raise HTTPException(status_code=400, detail="Entry endpoint cannot be empty.")
+    engine = GraphRAGEngine()
+    return engine.trace_taint_data_flow(request.entry_endpoint)

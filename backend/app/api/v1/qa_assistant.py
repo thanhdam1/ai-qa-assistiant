@@ -14,6 +14,7 @@ from app.agents.synthetic_data import SyntheticDataGenerator, SyntheticDataset
 from app.agents.export_service import ExportService
 from app.agents.pom_codegen_agent import POMCodeGenerator, POMTestSuite
 from app.agents.reflection_node import ReflectionNode
+from app.parsers.schema_extensions import SchemaExtensionParser
 
 router = APIRouter()
 
@@ -53,6 +54,27 @@ def generate_test_cases(request: GenerateTestRequest):
         test_suite=test_suite,
         rtm_matrix=rtm_matrix
     )
+
+class GenerateGraphQLTestRequest(BaseModel):
+    schema_sdl: str = Field(description="GraphQL Schema Definition Language (SDL) string")
+    title: Optional[str] = "GraphQL API"
+
+@router.post("/generate-graphql-tests", response_model=TestSuite, summary="Generate GraphQL Queries/Mutations Test Suite")
+def generate_graphql_tests(request: GenerateGraphQLTestRequest):
+    if not request.schema_sdl.strip():
+        raise HTTPException(status_code=400, detail="GraphQL SDL cannot be empty.")
+    parsed = SchemaExtensionParser.parse_graphql(request.schema_sdl, title=request.title or "GraphQL API")
+    return TestCaseGenerator.generate_from_graphql(parsed)
+
+class GenerateAsyncAPITestRequest(BaseModel):
+    spec_content: str = Field(description="AsyncAPI JSON/YAML string")
+
+@router.post("/generate-asyncapi-tests", response_model=TestSuite, summary="Generate Event-Driven AsyncAPI (Kafka/RabbitMQ) Test Suite")
+def generate_asyncapi_tests(request: GenerateAsyncAPITestRequest):
+    if not request.spec_content.strip():
+        raise HTTPException(status_code=400, detail="AsyncAPI specification cannot be empty.")
+    parsed = SchemaExtensionParser.parse_asyncapi(request.spec_content)
+    return TestCaseGenerator.generate_from_asyncapi(parsed)
 
 class SyntheticDataRequest(BaseModel):
     schema_definition: Dict[str, Any] = Field(description="OpenAPI Schema properties object")
@@ -116,6 +138,19 @@ def heal_code_diff(request: HealDiffRequest):
         healed_code=val_result.fixed_content or request.broken_code,
         errors_detected=val_result.errors,
         healing_attempts=val_result.healing_attempts
+    )
+
+class ResilientLocatorRequest(BaseModel):
+    element_tag: str = Field(default="button", description="HTML element tag e.g. button, input, a")
+    attributes: Dict[str, str] = Field(default_factory=dict, description="Attributes e.g. {'data-testid': 'submit-btn', 'role': 'button'}")
+    inner_text: Optional[str] = Field(default=None, description="Visible text inside the element")
+
+@router.post("/resilient-locators", summary="Synthesize Resilient Semantic Locators (Testing Library Standard)")
+def synthesize_locators_endpoint(request: ResilientLocatorRequest):
+    return ReflectionNode.synthesize_resilient_locator(
+        element_tag=request.element_tag,
+        attributes=request.attributes,
+        inner_text=request.inner_text
     )
 
 class RunTestRequest(BaseModel):

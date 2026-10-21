@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/FastAPI-0.111.0-009688.svg" alt="FastAPI"/>
   <img src="https://img.shields.io/badge/Tree--sitter-Polyglot_AST-orange.svg" alt="Tree-sitter"/>
   <img src="https://img.shields.io/badge/Vector_DB-Qdrant-red.svg" alt="Qdrant"/>
-  <img src="https://img.shields.io/badge/Tests-28%2F28%20Passed-brightgreen.svg" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Tests-42%2F42%20Passed-brightgreen.svg" alt="Tests"/>
   <img src="https://img.shields.io/badge/License-MIT-purple.svg" alt="License"/>
 </p>
 
@@ -127,7 +127,7 @@ API Documentation & Interactive Swagger UI available at: `http://localhost:8000/
 
 ### 4. Run Automated Test Suite
 ```bash
-# Run all 28 unit & integration tests
+# Run all 42 unit & integration tests
 pytest backend/tests/ -v
 ```
 
@@ -137,18 +137,24 @@ pytest backend/tests/ -v
 
 ### AI QA Assistant
 * `POST /api/v1/qa/generate-test-cases`: Ingests PRD markdown/text, returns comprehensive test suite & RTM.
+* `POST /api/v1/qa/generate-graphql-tests`: Synthesizes GraphQL Queries/Mutations test suite from SDL.
+* `POST /api/v1/qa/generate-asyncapi-tests`: Synthesizes Event-Driven AsyncAPI (Kafka/RabbitMQ) test suite.
 * `POST /api/v1/qa/generate-pom-scripts`: Synthesizes complete Playwright Page Object Model scripts with AST dry-run verification.
+* `POST /api/v1/qa/resilient-locators`: Computes prioritized resilient semantic DOM locators (Testing Library standard).
 * `POST /api/v1/qa/synthetic-data`: Generates realistic valid, boundary, invalid, and security test fixtures from OpenAPI schemas.
 * `POST /api/v1/qa/export-excel`: Exports test suite to styled Excel (`.xlsx`) file formatted for enterprise review.
 * `POST /api/v1/qa/export-csv`: Exports test suite to CSV compatible with Jira Xray, Zephyr, and TestRail.
 
-### Codebase Architecture Q&A
+### Codebase Architecture & GraphRAG Q&A
 * `POST /api/v1/codebase/index`: Indexes repository source files into Tree-sitter AST & Hybrid Vector Store.
 * `POST /api/v1/codebase/ask`: Answers architectural questions with data flow explanations and auto-generated Mermaid sequence diagrams.
+* `POST /api/v1/codebase/impact-trace`: Traces cross-layer impacts using GraphRAG multi-layer knowledge graph.
+* `POST /api/v1/codebase/taint-flow`: Performs AST Data-Flow / Taint analysis from Request DTO to Database Repository.
 * `GET /api/v1/codebase/symbols`: Lists indexed classes, methods, and cross-file dependencies.
 
-### CI/CD PR Bot
+### CI/CD PR Bot & Webhooks
 * `POST /api/v1/pr/analyze-impact`: Reads unified `git diff`, identifies modified methods, traces affected callers, and recommends regression test suites.
+* `POST /api/v1/webhook/github`: Bidirectional GitHub PR Webhook listener that analyzes changes and formats review comments.
 
 ---
 

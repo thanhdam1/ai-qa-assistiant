@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.api.v1.qa_assistant import router as qa_router
 from app.api.v1.codebase_qa import router as codebase_router
 from app.api.v1.pr_bot import router as pr_router
+from app.api.v1.webhook import router as webhook_router
 
 app = FastAPI(
     title="AI QA Assistant & Codebase Q&A API",
@@ -57,3 +58,4 @@ def health_check():
 app.include_router(qa_router, prefix="/api/v1/qa", tags=["QA Assistant"])
 app.include_router(codebase_router, prefix="/api/v1/codebase", tags=["Codebase Q&A"])
 app.include_router(pr_router, prefix="/api/v1/pr", tags=["CI/CD PR Bot"])
+app.include_router(webhook_router, prefix="/api/v1/webhook", tags=["DevOps Webhooks"])

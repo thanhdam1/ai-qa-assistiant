@@ -5,6 +5,17 @@ from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.core.llm_client import LLMClient
 
+class ValidationTurn(BaseModel):
+    turn_index: int
+    errors_found: List[str]
+    action_taken: str
+
+class ResilientLocator(BaseModel):
+    priority_level: int  # 1 (Best) to 6 (Fallback)
+    locator_type: str    # test_id, role, label, placeholder, text, css
+    locator_code: str
+    explanation: str
+
 class ValidationResult(BaseModel):
     is_valid: bool
     language: str
@@ -12,6 +23,7 @@ class ValidationResult(BaseModel):
     fixed_content: Optional[str] = None
     healing_attempts: int = 0
     locators_healed: int = 0
+    turn_history: List[ValidationTurn] = Field(default_factory=list)
 
 class ReflectionNode:
     """
@@ -77,22 +89,36 @@ class ReflectionNode:
         # Step 1: Heal brittle locators
         current_code, locators_fixed = cls.heal_brittle_locators(code)
         attempts = 0
+        history: List[ValidationTurn] = []
 
         # Step 2: Multi-turn AST validation loop
         for attempt in range(max_retries + 1):
             is_valid, errors = cls.validate_code_syntax(current_code, language=language)
             if is_valid:
+                if attempts > 0:
+                    history.append(ValidationTurn(
+                        turn_index=attempt,
+                        errors_found=[],
+                        action_taken="Code syntax successfully validated via AST dry-run."
+                    ))
                 return ValidationResult(
                     is_valid=True,
                     language=language,
                     errors=[],
                     fixed_content=current_code,
                     healing_attempts=attempts,
-                    locators_healed=locators_fixed
+                    locators_healed=locators_fixed,
+                    turn_history=history
                 )
 
             # Need self-healing
             attempts += 1
+            action_desc = f"Applied self-healing heuristics for {len(errors)} error(s)."
+            history.append(ValidationTurn(
+                turn_index=attempt + 1,
+                errors_found=errors,
+                action_taken=action_desc
+            ))
             if attempt < max_retries:
                 current_code = cls._heal_code(current_code, errors, language=language)
 
@@ -102,8 +128,98 @@ class ReflectionNode:
             errors=errors,
             fixed_content=current_code,
             healing_attempts=attempts,
-            locators_healed=locators_fixed
+            locators_healed=locators_fixed,
+            turn_history=history
         )
+
+    @classmethod
+    def synthesize_resilient_locator(
+        cls,
+        element_tag: str,
+        attributes: Dict[str, str],
+        inner_text: Optional[str] = None
+    ) -> List[ResilientLocator]:
+        """
+        Synthesizes a prioritized list of resilient Playwright locators based on
+        Testing Library & W3C Accessibility standards.
+        Priority:
+        1. data-testid / data-cy / data-test
+        2. Accessibility Role (role + name)
+        3. Label (aria-label, associated label)
+        4. Placeholder
+        5. Semantic Text Content
+        6. CSS / ID Fallback
+        """
+        locators: List[ResilientLocator] = []
+
+        # 1. Test ID (Most resilient against UI/layout redesigns)
+        test_id = attributes.get("data-testid") or attributes.get("data-test") or attributes.get("data-cy")
+        if test_id:
+            locators.append(ResilientLocator(
+                priority_level=1,
+                locator_type="test_id",
+                locator_code=f'page.get_by_test_id("{test_id}")',
+                explanation="Top priority: Explicit test ID attribute resistant to CSS & copy changes."
+            ))
+
+        # 2. Accessibility Role
+        role = attributes.get("role")
+        if not role:
+            if element_tag == "button" or attributes.get("type") == "button":
+                role = "button"
+            elif element_tag == "a":
+                role = "link"
+            elif element_tag == "input" and attributes.get("type") in ["text", "email", "password"]:
+                role = "textbox"
+
+        accessible_name = attributes.get("aria-label") or inner_text
+        if role and accessible_name:
+            locators.append(ResilientLocator(
+                priority_level=2,
+                locator_type="role",
+                locator_code=f'page.get_by_role("{role}", name="{accessible_name.strip()}")',
+                explanation="High priority: User-facing accessibility role and accessible name."
+            ))
+
+        # 3. Form Label
+        if attributes.get("aria-label"):
+            locators.append(ResilientLocator(
+                priority_level=3,
+                locator_type="label",
+                locator_code=f'page.get_by_label("{attributes["aria-label"]}")',
+                explanation="Standard accessibility label locator."
+            ))
+
+        # 4. Placeholder
+        if attributes.get("placeholder"):
+            locators.append(ResilientLocator(
+                priority_level=4,
+                locator_type="placeholder",
+                locator_code=f'page.get_by_placeholder("{attributes["placeholder"]}")',
+                explanation="Input placeholder matching user visual cue."
+            ))
+
+        # 5. Visible Text
+        if inner_text and inner_text.strip():
+            clean_text = inner_text.strip()
+            locators.append(ResilientLocator(
+                priority_level=5,
+                locator_type="text",
+                locator_code=f'page.get_by_text("{clean_text}")',
+                explanation="Direct visible text locator."
+            ))
+
+        # 6. ID or CSS Fallback
+        elem_id = attributes.get("id")
+        if elem_id and not re.match(r"^[0-9a-fA-F\-]{8,}$", elem_id):
+            locators.append(ResilientLocator(
+                priority_level=6,
+                locator_type="id",
+                locator_code=f'page.locator("#{elem_id}")',
+                explanation="DOM ID fallback (only when semantic locators are unavailable)."
+            ))
+
+        return locators
 
     @classmethod
     def _heal_code(cls, code: str, errors: List[str], language: str = "python") -> str:
