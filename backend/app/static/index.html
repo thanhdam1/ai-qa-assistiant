@@ -269,9 +269,15 @@ As a registered customer, I want to checkout my cart, so that I receive my items
           </div>
 
           <!-- Language Select -->
-          <select id="pom-lang-select" class="text-xs bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none font-medium">
+          <select id="pom-lang-select" onchange="generatePOM()" class="text-xs bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none font-medium">
             <option value="python">Playwright (Python) + PyTest</option>
             <option value="typescript">Playwright (TypeScript)</option>
+          </select>
+
+          <!-- Suite Structure Select -->
+          <select id="pom-suite-type" onchange="generatePOM()" class="text-xs bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none font-medium" title="Chọn cấu trúc kiến trúc mã kiểm thử">
+            <option value="standard_3tier">Chuẩn POM 3 Tầng (Base + Page + Spec)</option>
+            <option value="enterprise_modular">Bộ Suite Doanh Nghiệp (7 Files Tách Biệt)</option>
           </select>
 
           <!-- Generate POM Button -->
@@ -308,6 +314,43 @@ As a registered customer, I want to checkout my cart, so that I receive my items
             <span>▶ Run Test Now</span>
           </button>
         </div>
+      </div>
+
+      <!-- DOM & Gemini AI Configuration Bar -->
+      <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 bg-slate-900/60 border border-slate-800 rounded-xl px-4 py-2 text-xs">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center space-x-1">
+            <i class="fa-solid fa-brain text-purple-400"></i>
+            <span>Gemini 2.5 Flash Structured Outputs</span>
+          </span>
+          <button onclick="toggleDOMInput()" id="btn-toggle-dom" class="text-[11px] px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition flex items-center space-x-1 border border-slate-700/60">
+            <i class="fa-solid fa-code text-cyan-400"></i>
+            <span>+ Nhập DOM / Selectors Thực Tế</span>
+          </button>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-slate-400 text-[11px]">Gemini API Key:</span>
+          <input type="password" id="pom-gemini-key" placeholder="AIzaSy... (Để trống dùng Rule-based)" class="bg-slate-950 border border-slate-700/80 rounded-lg px-2.5 py-1 text-white font-mono text-[11px] w-48 focus:outline-none focus:border-purple-500" onchange="localStorage.setItem('pom_gemini_key', this.value)">
+          <select id="pom-engine-mode" class="bg-slate-950 border border-slate-700/80 rounded-lg px-2 py-1 text-slate-200 text-[11px] focus:outline-none font-medium">
+            <option value="auto">Auto (Gemini AI -> Rule-based fallback)</option>
+            <option value="rule_based">100% Rule-based (Offline 0ms)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Collapsible Real DOM / HTML Container -->
+      <div id="pom-dom-container" class="hidden bg-slate-900/80 border border-slate-800 rounded-xl p-3 text-xs space-y-1.5 transition">
+        <div class="flex items-center justify-between">
+          <span class="text-slate-300 font-semibold flex items-center space-x-1.5">
+            <i class="fa-solid fa-laptop-code text-cyan-400"></i>
+            <span>Dán HTML / DOM hoặc Selectors thực tế của trang web (VD: &lt;input data-testid="voucher-code"&gt;):</span>
+          </span>
+          <button onclick="toggleDOMInput()" class="text-slate-400 hover:text-white text-xs">
+            <i class="fa-solid fa-xmark"></i> Đóng
+          </button>
+        </div>
+        <textarea id="pom-dom-input" rows="2" class="w-full bg-slate-950 border border-slate-700/80 rounded-lg p-2.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-cyan-500" placeholder='<div class="cart-form"><input data-testid="voucher-code" name="voucher"><button data-testid="btn-apply-voucher">Áp dụng</button><div data-testid="voucher-error-alert" role="alert"></div></div>'></textarea>
       </div>
 
       <!-- Main Workspace Grid -->
@@ -858,11 +901,18 @@ class BrokenPaymentPage:
             });
             gitDiffEditor = window.gitDiffEditor;
 
+            // Restore saved Gemini API key if present
+            const savedGeminiKey = localStorage.getItem('pom_gemini_key');
+            if (savedGeminiKey && document.getElementById('pom-gemini-key')) {
+              document.getElementById('pom-gemini-key').value = savedGeminiKey;
+            }
+
             // Initialize default tabs
             loadSamplePRD();
             generateSynthetic();
             analyzePR();
             initCytoscape();
+            generatePOM();
           } catch (editorInitErr) {
             console.error("Monaco Editor internal mounting error:", editorInitErr);
           }
@@ -1163,33 +1213,49 @@ class BrokenPaymentPage:
       a.click();
     }
 
+    function toggleDOMInput() {
+      const container = document.getElementById('pom-dom-container');
+      if (!container) return;
+      container.classList.toggle('hidden');
+    }
+
     // TAB 2: POM CODEGEN & SELF-HEALING STUDIO
     async function generatePOM() {
       const featureInput = document.getElementById('pom-feature-input');
-      if (!featureInput || !featureInput.value.trim()) {
-        alert("Vui lòng nhập tên chức năng / tiêu chí vào ô 'Tính năng' để sinh mã POM chuẩn thực tế!");
-        return;
-      }
-      const feature = featureInput.value.trim();
-      const lang = document.getElementById('pom-lang-select').value;
+      const feature = (featureInput && featureInput.value.trim()) ? featureInput.value.trim() : "Thanh Toán & Đặt Hàng";
+      const langEl = document.getElementById('pom-lang-select');
+      const lang = langEl ? langEl.value : 'python';
+      const suiteTypeEl = document.getElementById('pom-suite-type');
+      const suiteType = suiteTypeEl ? suiteTypeEl.value : 'standard_3tier';
       const prd = typeof getPRDContent === 'function' ? getPRDContent() : null;
+      const domContent = document.getElementById('pom-dom-input')?.value.trim() || null;
+      const geminiKey = document.getElementById('pom-gemini-key')?.value.trim() || null;
+      const useGemini = document.getElementById('pom-engine-mode')?.value !== 'rule_based';
       const btn = document.getElementById('btn-generate-pom');
 
-      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang sinh...`;
+      if (btn) btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang sinh...`;
       try {
         const res = await fetch('/api/v1/qa/generate-pom-scripts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ feature_name: feature, language: lang, prd_content: prd })
+          body: JSON.stringify({
+            feature_name: feature,
+            language: lang,
+            suite_type: suiteType,
+            prd_content: prd,
+            dom_content: domContent,
+            gemini_api_key: geminiKey,
+            use_gemini: useGemini
+          })
         });
         currentPOMData = await res.json();
         switchPOMWorkspace('codegen');
         renderPOMTabs();
         selectPOMTab(0);
       } catch (e) {
-        alert("Lỗi sinh code POM: " + e);
+        console.error("Lỗi sinh code POM: ", e);
       } finally {
-        btn.innerHTML = `<i class="fa-solid fa-code"></i> <span>Sinh Mã POM</span>`;
+        if (btn) btn.innerHTML = `<i class="fa-solid fa-code"></i> <span>Sinh Mã POM</span>`;
       }
     }
 
@@ -1200,14 +1266,34 @@ class BrokenPaymentPage:
       currentPOMData.files.forEach((f, idx) => {
         const btn = document.createElement('button');
         btn.onclick = () => selectPOMTab(idx);
-        btn.className = `px-2.5 py-1 rounded-md text-[11px] font-mono transition ${idx === activePOMIdx ? 'bg-blue-600 text-white font-medium' : 'text-slate-400 hover:bg-slate-800'}`;
-        btn.innerText = f.file_path;
+
+        let roleBadge = '';
+        if (f.file_type === 'base_page') {
+          roleBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 font-mono ml-1 border border-cyan-500/30">Lớp Base</span>';
+        } else if (f.file_type === 'page_object') {
+          roleBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 font-mono ml-1 border border-indigo-500/30">Page Object</span>';
+        } else if (f.file_type === 'fixture_config') {
+          roleBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 font-mono ml-1 border border-amber-500/30">Fixture</span>';
+        } else if (f.file_type === 'test_positive') {
+          roleBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-mono ml-1 border border-emerald-500/30">Positive</span>';
+        } else if (f.file_type === 'test_boundary') {
+          roleBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 font-mono ml-1 border border-blue-500/30">BVA Limit</span>';
+        } else if (f.file_type === 'test_negative') {
+          roleBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 font-mono ml-1 border border-rose-500/30">Negative</span>';
+        } else if (f.file_type === 'test_security') {
+          roleBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 font-mono ml-1 border border-purple-500/30">Security</span>';
+        } else {
+          roleBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-mono ml-1 border border-emerald-500/30">Test Spec</span>';
+        }
+
+        btn.className = `px-2.5 py-1 rounded-md text-[11px] font-mono transition flex items-center space-x-1 ${idx === activePOMIdx ? 'bg-blue-600 text-white font-medium shadow-sm' : 'text-slate-400 hover:bg-slate-800'}`;
+        btn.innerHTML = `<span>${f.file_path}</span> ${roleBadge}`;
         container.appendChild(btn);
       });
     }
 
     function selectPOMTab(idx) {
-      if (!currentPOMData || !currentPOMData.files[idx]) return;
+      if (!currentPOMData || !currentPOMData.files || !currentPOMData.files[idx]) return;
       activePOMIdx = idx;
       renderPOMTabs();
       const file = currentPOMData.files[idx];

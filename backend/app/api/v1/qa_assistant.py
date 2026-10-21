@@ -105,7 +105,11 @@ def generate_synthetic_data(request: SyntheticDataRequest):
 class GeneratePOMRequest(BaseModel):
     feature_name: str = Field(description="Name of the feature e.g. 'User Login' or 'Checkout'")
     language: Optional[str] = Field(default="python", description="Target language: python or typescript")
+    suite_type: Optional[str] = Field(default="standard_3tier", description="Suite structure: 'standard_3tier' (3 files) or 'enterprise_modular' (7 files)")
     prd_content: Optional[str] = None
+    dom_content: Optional[str] = Field(default=None, description="Optional raw HTML or DOM selectors snippet")
+    gemini_api_key: Optional[str] = Field(default=None, description="Optional Gemini API key")
+    use_gemini: Optional[bool] = Field(default=True, description="Whether to attempt Gemini 2.5 Flash Structured Outputs")
 
 @router.post("/generate-pom-scripts", response_model=POMTestSuite, summary="Synthesize Page Object Model Automation Scripts")
 def generate_pom_scripts(request: GeneratePOMRequest):
@@ -120,7 +124,12 @@ def generate_pom_scripts(request: GeneratePOMRequest):
     return POMCodeGenerator.generate_playwright_suite(
         feature_name=request.feature_name,
         test_suite=test_suite,
-        language=request.language or "python"
+        language=request.language or "python",
+        suite_type=request.suite_type or "standard_3tier",
+        prd_content=request.prd_content,
+        dom_content=request.dom_content,
+        gemini_api_key=request.gemini_api_key,
+        use_gemini=request.use_gemini if request.use_gemini is not None else True
     )
 
 class HealDiffRequest(BaseModel):
