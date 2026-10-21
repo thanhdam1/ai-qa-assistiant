@@ -1,6 +1,13 @@
 import io
 import time
+import json
+import sys
+import os
+import platform
+import tempfile
+import subprocess
 import asyncio
+import urllib.parse
 from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -17,6 +24,9 @@ from app.agents.reflection_node import ReflectionNode
 from app.parsers.schema_extensions import SchemaExtensionParser
 
 router = APIRouter()
+
+RUNNER_TEMP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".tmp_runner"))
+os.makedirs(RUNNER_TEMP_DIR, exist_ok=True)
 
 class GenerateTestRequest(BaseModel):
     prd_content: str = Field(description="Raw markdown or text content of the PRD/SRS/User Stories")
@@ -197,7 +207,7 @@ def run_live_test(request: RunTestRequest):
     # 2. Real Python compilation & pytest test discovery/execution
     temp_file_path = None
     try:
-        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as tf:
+        with tempfile.NamedTemporaryFile("w", dir=RUNNER_TEMP_DIR, prefix="test_", suffix=".py", delete=False, encoding="utf-8") as tf:
             tf.write(request.code)
             temp_file_path = tf.name
 
@@ -284,23 +294,128 @@ def export_csv(test_suite: TestSuite):
 @router.websocket("/ws/runner")
 async def websocket_test_runner(websocket: WebSocket):
     """
-    Real-time WebSocket endpoint for streaming Playwright live test execution logs.
+    Real-time WebSocket endpoint for streaming real Playwright/Python live test execution logs.
+    Executes actual user-supplied code via AST validation, py_compile, and pytest subprocess.
     """
     await websocket.accept()
+    temp_file_path = None
     try:
-        data = await websocket.receive_text()
-        steps = [
-            f"[INFO] Initializing browser context: Chromium v122.0.6261.39",
-            f"[INFO] Viewport: 1280x720 | Headless: True",
-            f"[RUN]  Validating AST syntax & compiling test fixtures...",
-            f"[RUN]  tests/test_spec.py::test_positive_submission ... PASSED [33%]",
-            f"[RUN]  tests/test_spec.py::test_boundary_empty_values ... PASSED [66%]",
-            f"[RUN]  tests/test_spec.py::test_negative_invalid_input ... PASSED [100%]",
-            f"[DONE] Execution finished: 3 passed, 0 failed in 0.38s",
-            f"[REPORT] HTML Report generated: playwright-report/index.html"
-        ]
-        for s in steps:
-            await websocket.send_text(s)
-            await asyncio.sleep(0.1)
+        raw_msg = await websocket.receive_text()
+        code = ""
+        framework = "playwright"
+        language = "python"
+        try:
+            parsed = json.loads(raw_msg)
+            if isinstance(parsed, dict):
+                code = parsed.get("code", "")
+                framework = parsed.get("framework", "playwright")
+                language = parsed.get("language", "python")
+            else:
+                code = str(raw_msg)
+        except Exception:
+            code = raw_msg
+
+        if not code or not code.strip():
+            await websocket.send_text("[ERROR] Không nhận được mã kiểm thử nào để thực thi.")
+            await websocket.send_text("[STATUS] FAILED")
+            return
+
+        runtime_ver = f"Python {sys.version.split()[0]} ({platform.system()} {platform.machine()})"
+        await websocket.send_text(f"[RUNNER] === Khởi động Sandbox Test Runner Thật ===")
+        await websocket.send_text(f"[RUNNER] Môi trường: {runtime_ver} | Framework: {framework}")
+        await asyncio.sleep(0.05)
+
+        # 1. AST Syntax Analysis
+        await websocket.send_text("[RUNNER] Bước 1/3: Phân tích cây cú pháp trừu tượng AST...")
+        is_valid, errors = ReflectionNode.validate_code_syntax(code, language=language)
+        if not is_valid:
+            await websocket.send_text(f"[ERROR] Phát hiện lỗi cú pháp AST trong mã nguồn:")
+            for err in errors:
+                await websocket.send_text(f"  ❌ {err}")
+            await websocket.send_text("[STATUS] FAILED")
+            return
+
+        await websocket.send_text("[OK] Kiểm tra cú pháp AST thành công: 0 lỗi cú pháp.")
+        await asyncio.sleep(0.05)
+
+        # 2. Bytecode Compilation via py_compile
+        await websocket.send_text("[RUNNER] Bước 2/3: Biên dịch bytecode với py_compile...")
+        with tempfile.NamedTemporaryFile("w", dir=RUNNER_TEMP_DIR, prefix="test_", suffix=".py", delete=False, encoding="utf-8") as tf:
+            tf.write(code)
+            temp_file_path = tf.name
+
+        comp_proc = await asyncio.to_thread(
+            subprocess.run,
+            [sys.executable, "-m", "py_compile", temp_file_path],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if comp_proc.returncode != 0:
+            await websocket.send_text(f"[ERROR] Lỗi biên dịch bytecode:\n{comp_proc.stderr.strip()}")
+            await websocket.send_text("[STATUS] FAILED")
+            return
+
+        await websocket.send_text("[OK] Biên dịch bytecode .pyc thành công.")
+        await asyncio.sleep(0.05)
+
+        # 3. Test Runner Execution (pytest collection & execution)
+        await websocket.send_text("[RUNNER] Bước 3/3: Kích hoạt pytest thu thập và kiểm thử...")
+
+        def run_pytest_in_thread(fpath):
+            try:
+                clean_env = os.environ.copy()
+                clean_env.pop("PYTEST_CURRENT_TEST", None)
+                proc = subprocess.run(
+                    [sys.executable, "-m", "pytest", fpath, "-v", "--tb=short"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    encoding="utf-8",
+                    errors="replace",
+                    env=clean_env,
+                    stdin=subprocess.DEVNULL
+                )
+                return proc.returncode, proc.stdout.splitlines(), proc.stderr
+            except subprocess.TimeoutExpired:
+                return -1, ["[ERROR] Timeout: Test execution exceeded 10 seconds."], ""
+            except Exception as e:
+                return -1, [f"[ERROR] Subprocess error: {str(e)}"], ""
+
+        ret_code, lines, stderr_str = await asyncio.to_thread(run_pytest_in_thread, temp_file_path)
+
+        for line_str in lines:
+            if line_str.strip():
+                cleaned_line = line_str.replace(temp_file_path, "user_test_spec.py")
+                await websocket.send_text(f"[PYTEST] {cleaned_line}")
+                await asyncio.sleep(0.005)
+
+        if stderr_str and stderr_str.strip():
+            cleaned_err = stderr_str.replace(temp_file_path, "user_test_spec.py").strip()
+            await websocket.send_text(f"[STDERR] {cleaned_err}")
+
+        if ret_code == 0:
+            await websocket.send_text("[DONE] Tất cả các ca kiểm thử và assertions thực thi THÀNH CÔNG!")
+            await websocket.send_text("[STATUS] PASSED")
+        elif ret_code == 5:
+            await websocket.send_text("[INFO] Module Python / Page Object Model hợp lệ (đã kiểm tra compilation thành công).")
+            await websocket.send_text("[DONE] Kiểm tra hoàn tất thành công.")
+            await websocket.send_text("[STATUS] PASSED")
+        else:
+            await websocket.send_text(f"[DONE] Pytest kết thúc với mã lỗi: {ret_code}")
+            await websocket.send_text("[STATUS] FAILED")
+
     except WebSocketDisconnect:
         pass
+    except Exception as e:
+        try:
+            await websocket.send_text(f"[EXCEPTION] Lỗi thực thi test runner: {str(e)}")
+            await websocket.send_text("[STATUS] FAILED")
+        except Exception:
+            pass
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except Exception:
+                pass

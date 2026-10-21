@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 import pytest
 import openpyxl
 import io
@@ -103,3 +104,56 @@ def test_qa_api_endpoints():
     )
     synth_res = generate_synthetic_data(synth_req)
     assert len(synth_res.valid_payloads) >= 1
+
+def test_real_live_runner_and_websocket():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+
+    # 1. Real code with valid syntax and assertions
+    valid_code = """
+def test_addition():
+    assert 2 + 2 == 4
+
+def test_string():
+    assert "hello".upper() == "HELLO"
+"""
+    with client.websocket_connect("/api/v1/qa/ws/runner") as ws:
+        ws.send_text(json.dumps({"code": valid_code, "framework": "playwright"}))
+        received = []
+        while True:
+            try:
+                msg = ws.receive_text()
+                received.append(msg)
+                if "[STATUS] PASSED" in msg or "[STATUS] FAILED" in msg:
+                    break
+            except Exception:
+                break
+        
+        all_text = "\n".join(received)
+        assert "[STATUS] PASSED" in all_text
+        assert "Phân tích cây cú pháp trừu tượng AST" in all_text
+        assert "Biên dịch bytecode với py_compile" in all_text
+
+    # 2. Broken code with AST Syntax error
+    broken_syntax_code = """
+def broken_func()
+    print("missing colon")
+"""
+    with client.websocket_connect("/api/v1/qa/ws/runner") as ws:
+        ws.send_text(json.dumps({"code": broken_syntax_code, "framework": "playwright"}))
+        received = []
+        while True:
+            try:
+                msg = ws.receive_text()
+                received.append(msg)
+                if "[STATUS] PASSED" in msg or "[STATUS] FAILED" in msg:
+                    break
+            except Exception:
+                break
+        
+        all_text = "\n".join(received)
+        assert "[STATUS] FAILED" in all_text
+        assert "Phát hiện lỗi cú pháp AST" in all_text
+

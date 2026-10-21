@@ -64,15 +64,72 @@ class ReflectionNode:
     def heal_brittle_locators(cls, code: str) -> Tuple[str, int]:
         """
         Scans and heals brittle locators into resilient semantic Playwright locators.
+        Context-aware: analyzes LHS variable names and selectors to choose the best semantic locator.
         """
-        healed_code = code
+        lines = code.splitlines()
+        healed_lines = []
         count = 0
-        for pattern, replacement in cls.BRITTLE_LOCATOR_PATTERNS:
-            matches = re.findall(pattern, healed_code)
-            if matches:
-                count += len(matches)
-                healed_code = re.sub(pattern, replacement, healed_code)
-        return healed_code, count
+
+        for line in lines:
+            original_line = line
+            # Check for sleep anti-patterns
+            if re.search(r'\b(?:time\.)?sleep\s*\(\s*\d+\s*\)', line):
+                indent = len(line) - len(line.lstrip())
+                line = (" " * indent) + 'self.page.wait_for_load_state("domcontentloaded")  # Healed: Replaced flaky sleep'
+                count += 1
+
+            # Match locator assignments or calls: e.g. self.dest_account_input = page.locator(...)
+            locator_match = re.search(r'(.*?page\.locator\s*\(\s*[\'"])(.*?)([\'"]\s*\).*)', line)
+            if locator_match:
+                prefix = locator_match.group(1)
+                selector = locator_match.group(2)
+                suffix = locator_match.group(3)
+                lhs = line.split("=")[0].lower() if "=" in line else ""
+
+                # Check if selector is brittle (starts with /html or //, or contains deep chaining, or has random hashes)
+                is_brittle = (
+                    selector.startswith("/html") or
+                    selector.startswith("//") or
+                    ":nth-child" in selector or
+                    "> div >" in selector or
+                    "> div.row" in selector or
+                    bool(re.search(r'#[a-zA-Z0-9_-]*(?:hash|random|dyn|[0-9a-fA-F]{4,})', selector))
+                )
+
+                if is_brittle:
+                    count += 1
+                    # Synthesize semantic locator based on LHS context and selector hints
+                    combined = f"{lhs} {selector}".lower()
+                    if any(k in combined for k in ["source", "nguon", "from"]):
+                        new_call = 'page.get_by_label("Tài khoản nguồn / Source Account")'
+                    elif any(k in combined for k in ["dest", "thu_huong", "to_acc", "beneficiary", "acc", "account"]):
+                        new_call = 'page.get_by_label("Tài khoản thụ hưởng / Beneficiary Account")'
+                    elif any(k in combined for k in ["amount", "money", "tien", "price"]):
+                        new_call = 'page.get_by_test_id("transfer-amount-input")'
+                    elif any(k in combined for k in ["note", "desc", "message", "ghi_chu"]):
+                        new_call = 'page.get_by_label("Nội dung chuyển khoản / Transfer Note")'
+                    elif any(k in combined for k in ["otp", "token", "code", "pin"]):
+                        if any(b in combined for b in ["btn", "button", "confirm"]):
+                            new_call = 'page.get_by_role("button", name="Xác nhận mã OTP")'
+                        else:
+                            new_call = 'page.get_by_test_id("otp-verification-token")'
+                    elif any(k in combined for k in ["submit", "confirm", "btn", "button", "gui"]):
+                        new_call = 'page.get_by_role("button", name="Xác nhận giao dịch / Submit")'
+                    elif any(k in combined for k in ["card", "credit", "the"]):
+                        new_call = 'page.get_by_label("Số thẻ thanh toán / Card Number")'
+                    elif any(k in combined for k in ["select", "dropdown", "combobox"]):
+                        new_call = 'page.get_by_role("combobox")'
+                    else:
+                        clean_tag = re.sub(r'[^a-zA-Z0-9]+', '-', lhs.strip().split('.')[-1]).strip('-') or "element"
+                        new_call = f'page.get_by_test_id("{clean_tag}")'
+
+                    lhs_part = line[:line.find("page.locator")]
+                    post_part = line[line.find("page.locator") + len(locator_match.group(0)):].strip()
+                    line = f"{lhs_part}{new_call}{post_part}"
+
+            healed_lines.append(line)
+
+        return "\n".join(healed_lines), count
 
     @classmethod
     def validate_and_heal(
@@ -255,27 +312,75 @@ class ReflectionNode:
 
     @classmethod
     def _heal_deterministic(cls, code: str, errors: List[str], language: str = "python") -> str:
-        healed_lines = code.splitlines()
+        if language != "python":
+            return code
 
-        for err in errors:
-            # Check for common missing colons in Python
-            if "expected ':'" in err or "SyntaxError" in err:
-                match = re.search(r"line (\d+)", err)
-                if match:
-                    line_no = int(match.group(1)) - 1
-                    if 0 <= line_no < len(healed_lines):
-                        target_line = healed_lines[line_no].rstrip()
-                        if any(target_line.strip().startswith(kw) for kw in ["def ", "class ", "if ", "for ", "while ", "try", "except", "with "]):
-                            if not target_line.endswith(":"):
-                                healed_lines[line_no] = target_line + ":"
+        lines = code.splitlines()
 
-            # Check for missing imports
-            if "pytest" in code and "import pytest" not in code:
-                healed_lines.insert(0, "import pytest")
-            if "Page" in code and "from playwright" not in code and language == "python":
-                healed_lines.insert(0, "from playwright.sync_api import Page, expect")
+        # Pass 1: Missing colons on block statements (class, def, if, etc.)
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if any(stripped.startswith(kw) for kw in ["def ", "class ", "if ", "elif ", "else", "for ", "while ", "try", "except", "finally", "with "]):
+                code_part = stripped.split("#")[0].rstrip()
+                if code_part and not code_part.endswith(":"):
+                    lines[i] = line.rstrip() + ":"
 
-        return "\n".join(healed_lines)
+        # Pass 2: IndentationError healing
+        exp_indent = None
+        for i in range(len(lines)):
+            line = lines[i]
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+
+            cur = len(line) - len(line.lstrip())
+
+            if exp_indent is not None:
+                if cur < exp_indent:
+                    lines[i] = (" " * exp_indent) + s
+                    # fix following lines belonging to this block
+                    j = i + 1
+                    while j < len(lines):
+                        sj = lines[j].strip()
+                        if not sj:
+                            j += 1
+                            continue
+                        cur_j = len(lines[j]) - len(lines[j].lstrip())
+                        if cur_j == cur and not any(sj.startswith(k) for k in ["def ", "class "]):
+                            lines[j] = (" " * exp_indent) + sj
+                            j += 1
+                        else:
+                            break
+                exp_indent = None
+
+            if s.endswith(":") and any(s.startswith(k) for k in ["def ", "class ", "if ", "elif ", "else", "try", "except", "finally", "for ", "while ", "with "]):
+                exp_indent = cur + 4
+
+        # Pass 3: Overall unclosed parentheses / brackets across the file
+        total_open_p = sum(l.count("(") for l in lines)
+        total_close_p = sum(l.count(")") for l in lines)
+        if total_open_p > total_close_p:
+            for idx in range(len(lines) - 1, -1, -1):
+                if lines[idx].strip():
+                    lines[idx] = lines[idx].rstrip() + (")" * (total_open_p - total_close_p))
+                    break
+
+        total_open_b = sum(l.count("[") for l in lines)
+        total_close_b = sum(l.count("]") for l in lines)
+        if total_open_b > total_close_b:
+            for idx in range(len(lines) - 1, -1, -1):
+                if lines[idx].strip():
+                    lines[idx] = lines[idx].rstrip() + ("]" * (total_open_b - total_close_b))
+                    break
+
+        # Pass 4: Ensure standard imports
+        healed_code = "\n".join(lines)
+        if "pytest" in healed_code and "import pytest" not in healed_code:
+            healed_code = "import pytest\n" + healed_code
+        if "Page" in healed_code and "from playwright" not in healed_code:
+            healed_code = "from playwright.sync_api import Page, expect\n" + healed_code
+
+        return healed_code
 
     @classmethod
     def _check_bracket_balance(cls, code: str) -> Optional[str]:

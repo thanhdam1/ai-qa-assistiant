@@ -129,8 +129,16 @@
             <option value="graphql">Format: GraphQL SDL</option>
             <option value="asyncapi">Format: AsyncAPI (Kafka/RabbitMQ)</option>
           </select>
-          <button onclick="loadCurrentSample()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-blue-400 border border-slate-800 transition">
-            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Tải Mẫu
+          <input type="file" id="prd-file-input" class="hidden" accept=".md,.txt,.json,.yaml,.yml,.graphql,.sdl" onchange="handlePRDFileUpload(event)">
+          <button onclick="document.getElementById('prd-file-input').click()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-800 transition flex items-center space-x-1" title="Tải file PRD/SRS/Spec thật từ máy tính">
+            <i class="fa-solid fa-upload"></i>
+            <span>Tải File PRD</span>
+          </button>
+          <button onclick="clearPRDEditor()" class="text-xs px-2 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-400 border border-slate-800 transition" title="Xóa trắng để nhập dữ liệu mới">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+          <button onclick="loadCurrentSample()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-blue-400 border border-slate-800 transition" title="Tải văn bản mẫu tham khảo">
+            <i class="fa-solid fa-file-lines mr-1"></i> Mẫu
           </button>
           <button onclick="generateTestCases()" id="btn-generate-tc" class="text-xs px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold shadow-lg shadow-blue-500/20 transition flex items-center space-x-1.5">
             <i class="fa-solid fa-play"></i>
@@ -272,6 +280,16 @@ As a registered customer, I want to checkout my cart, so that I receive my items
             <span>Sinh Mã POM</span>
           </button>
 
+          <!-- Hidden Test Script File Input -->
+          <input type="file" id="test-script-file-input" class="hidden" accept=".py,.ts,.js,.txt" onchange="handleTestScriptUpload(event)">
+          <button onclick="document.getElementById('test-script-file-input').click()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-700/80 transition flex items-center space-x-1" title="Tải file test Python/Playwright thật từ máy tính">
+            <i class="fa-solid fa-upload"></i>
+            <span>Tải Code Thật (.py)</span>
+          </button>
+          <button onclick="clearPOMEditor()" class="text-xs px-2 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-400 border border-slate-700/80 transition" title="Xóa trắng để nhập code của bạn">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+
           <!-- Toggle View Mode: [Files POM] vs [Self-Healing Diff Studio] -->
           <div class="flex bg-slate-900 border border-slate-700/80 rounded-lg p-0.5 text-xs">
             <button onclick="switchPOMWorkspace('codegen')" id="btn-mode-codegen" class="px-2.5 py-1 rounded-md bg-blue-600 text-white font-semibold transition flex items-center space-x-1">
@@ -324,9 +342,16 @@ As a registered customer, I want to checkout my cart, so that I receive my items
               <span id="heal-turn-pill" class="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-mono">Sẵn sàng phân tích</span>
             </div>
             <div class="flex items-center space-x-2">
-              <button onclick="loadSampleBrokenCode()" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] transition flex items-center space-x-1 border border-slate-700">
+              <button onclick="document.getElementById('test-script-file-input').click()" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 text-[11px] transition flex items-center space-x-1 border border-slate-700" title="Tải file test thật từ máy tính">
+                <i class="fa-solid fa-upload"></i>
+                <span>Tải File .py</span>
+              </button>
+              <button onclick="clearHealEditor()" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 text-[11px] transition border border-slate-700" title="Xóa trắng để dán code của bạn">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+              <button onclick="loadSampleBrokenCode()" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] transition flex items-center space-x-1 border border-slate-700" title="Dán code mẫu có lỗi">
                 <i class="fa-solid fa-paste text-amber-400"></i>
-                <span>Dán Code Lỗi Mẫu</span>
+                <span>Code Lỗi Mẫu</span>
               </button>
               <button onclick="triggerSelfHealing()" id="btn-trigger-heal" class="px-3 py-1 rounded bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-[11px] transition flex items-center space-x-1 shadow-md shadow-purple-500/20">
                 <i class="fa-solid fa-wand-magic-sparkles"></i>
@@ -412,6 +437,13 @@ As a registered customer, I want to checkout my cart, so that I receive my items
           <p class="text-xs text-slate-400">Phân tích cây cú pháp AST, đồ thị tri thức GraphRAG liên kết Controller ↔ Service ↔ Repository, và AST Data-Flow Taint Analysis.</p>
         </div>
         <div class="flex items-center space-x-2">
+          <!-- Hidden Codebase Files Uploader -->
+          <input type="file" id="codebase-files-input" class="hidden" accept=".py,.js,.ts" multiple onchange="handleCodebaseFilesUpload(event)">
+          <button onclick="document.getElementById('codebase-files-input').click()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-purple-400 border border-slate-800 transition flex items-center space-x-1" title="Tải lên và index các file mã nguồn thật từ máy tính">
+            <i class="fa-solid fa-file-circle-plus"></i>
+            <span>Index File Của Bạn</span>
+          </button>
+
           <!-- GraphRAG Impact Radar Search Input -->
           <div class="flex items-center space-x-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs">
             <i class="fa-solid fa-radar text-amber-400"></i>
@@ -493,11 +525,35 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       <div class="flex items-center justify-between shrink-0">
         <div>
           <h2 class="text-lg font-bold text-white tracking-tight">Multi-Schema Synthetic Test Fixture Studio</h2>
-          <p class="text-xs text-slate-400">Sinh dữ liệu mock đa tầng (Hợp lệ, Ca biên, Ca lỗi, Injection SQLi/XSS) hỗ trợ OpenAPI v3, GraphQL và AsyncAPI.</p>
+          <p class="text-xs text-slate-400">Sinh dữ liệu thật đa tầng (Hợp lệ, Ca biên, Ca lỗi, Injection SQLi/XSS) theo OpenAPI v3, GraphQL và AsyncAPI.</p>
         </div>
-        <button onclick="generateSynthetic()" class="text-xs px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold transition shadow-lg shadow-purple-500/20">
-          <i class="fa-solid fa-wand-magic mr-1"></i> Sinh Dữ Liệu Test Fixture
-        </button>
+        <div class="flex items-center space-x-2">
+          <!-- Endpoint Path Input -->
+          <div class="flex items-center space-x-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs">
+            <span class="text-slate-400 font-mono text-[10px]">Path:</span>
+            <input type="text" id="synth-endpoint" value="/api/v1/transfers" placeholder="/api/v1/resource" class="bg-transparent text-slate-200 font-mono w-36 focus:outline-none text-xs">
+          </div>
+          <!-- HTTP Method Select -->
+          <select id="synth-method" class="text-xs bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-purple-300 font-mono font-bold focus:outline-none">
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
+            <option value="GET">GET</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+          <!-- Schema File Uploader -->
+          <input type="file" id="synth-file-input" class="hidden" accept=".json,.yaml,.yml" onchange="handleSynthFileUpload(event)">
+          <button onclick="document.getElementById('synth-file-input').click()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-purple-400 border border-slate-800 transition flex items-center space-x-1" title="Tải file JSON/YAML Schema từ máy tính">
+            <i class="fa-solid fa-upload"></i>
+            <span>Tải Schema</span>
+          </button>
+          <button onclick="clearSynthEditor()" class="text-xs px-2 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-400 border border-slate-800 transition" title="Xóa trắng để dán schema của bạn">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+          <button onclick="generateSynthetic()" class="text-xs px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold transition shadow-lg shadow-purple-500/20">
+            <i class="fa-solid fa-wand-magic mr-1"></i> Sinh Dữ Liệu Test Fixture
+          </button>
+        </div>
       </div>
 
       <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-0">
@@ -552,12 +608,31 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       <div class="flex items-center justify-between shrink-0">
         <div>
           <h2 class="text-lg font-bold text-white tracking-tight">CI/CD PR Impact Radar & GitHub Webhook Receiver</h2>
-          <p class="text-xs text-slate-400">Phân tích chuỗi git diff khi mở Pull Request, liên kết Webhook 2 chiều và tự động bình luận khuyến nghị test regression.</p>
+          <p class="text-xs text-slate-400">Phân tích chuỗi git diff thực tế khi mở Pull Request, liên kết Webhook 2 chiều và tự động bình luận khuyến nghị test regression.</p>
         </div>
         <div class="flex items-center space-x-2">
+          <!-- PR Title Input -->
+          <div class="flex items-center space-x-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs">
+            <span class="text-slate-400 font-mono text-[10px]">PR:</span>
+            <input type="text" id="pr-title-input" value="feat(payment): integrate multi-currency crypto tokens" class="bg-transparent text-slate-200 font-medium w-48 focus:outline-none text-xs" placeholder="Tiêu đề PR...">
+          </div>
+          <!-- PR Number Input -->
+          <div class="flex items-center space-x-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs">
+            <span class="text-slate-400 font-mono text-[10px]">#</span>
+            <input type="number" id="pr-num-input" value="105" class="bg-transparent text-slate-200 font-mono w-14 focus:outline-none text-xs">
+          </div>
+          <!-- Diff File Uploader -->
+          <input type="file" id="diff-file-input" class="hidden" accept=".diff,.patch,.txt" onchange="handleDiffFileUpload(event)">
+          <button onclick="document.getElementById('diff-file-input').click()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800 transition flex items-center space-x-1" title="Tải file diff/patch thật từ máy tính">
+            <i class="fa-solid fa-upload"></i>
+            <span>Tải Diff</span>
+          </button>
+          <button onclick="clearDiffEditor()" class="text-xs px-2 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-400 border border-slate-800 transition" title="Xóa trắng để dán diff của bạn">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
           <button onclick="simulateWebhook()" class="text-xs px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800 transition flex items-center space-x-1.5 font-medium">
             <i class="fa-solid fa-bolt"></i>
-            <span>Simulate Webhook Event</span>
+            <span>Simulate Webhook</span>
           </button>
           <button onclick="analyzePR()" class="text-xs px-4 py-2 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold shadow-lg shadow-amber-500/20 transition flex items-center space-x-1.5">
             <i class="fa-solid fa-radar"></i>
@@ -599,6 +674,7 @@ As a registered customer, I want to checkout my cart, so that I receive my items
     var gitDiffEditor = null;
     var currentPOMData = null;
     var activePOMIdx = 0;
+    var currentWorkspaceMode = 'codegen';
     var isDiffModeActive = false;
     var cyInstance = null;
 
@@ -872,12 +948,51 @@ class BrokenPaymentPage:
 
     function getPRDContent() {
       if (window.prdEditor && typeof window.prdEditor.getValue === 'function') {
-        const val = window.prdEditor.getValue();
-        if (val && val.trim()) return val;
+        return window.prdEditor.getValue();
       }
       const el = document.getElementById('prd-fallback-textarea');
-      if (el && el.value && el.value.trim()) return el.value;
-      return SAMPLE_PRD;
+      if (el) return el.value;
+      return "";
+    }
+
+    function handlePRDFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const content = e.target.result;
+        if (window.prdEditor) {
+          window.prdEditor.setValue(content);
+        }
+        const el = document.getElementById('prd-fallback-textarea');
+        if (el) el.value = content;
+
+        document.getElementById('spec-filename').innerText = file.name;
+        const ext = file.name.split('.').pop().toLowerCase();
+        const formatSelect = document.getElementById('prd-input-format');
+        if (ext === 'graphql' || ext === 'sdl') {
+          formatSelect.value = 'graphql';
+          if (window.prdEditor && monaco) monaco.editor.setModelLanguage(window.prdEditor.getModel(), 'graphql');
+          document.getElementById('spec-mode-badge').innerText = `File: ${file.name} (GraphQL)`;
+        } else if (ext === 'yaml' || ext === 'yml') {
+          formatSelect.value = 'asyncapi';
+          if (window.prdEditor && monaco) monaco.editor.setModelLanguage(window.prdEditor.getModel(), 'yaml');
+          document.getElementById('spec-mode-badge').innerText = `File: ${file.name} (AsyncAPI)`;
+        } else {
+          formatSelect.value = 'prd';
+          if (window.prdEditor && monaco) monaco.editor.setModelLanguage(window.prdEditor.getModel(), 'markdown');
+          document.getElementById('spec-mode-badge').innerText = `File: ${file.name} (PRD Markdown)`;
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function clearPRDEditor() {
+      if (window.prdEditor) window.prdEditor.setValue('');
+      const el = document.getElementById('prd-fallback-textarea');
+      if (el) el.value = '';
+      document.getElementById('spec-filename').innerText = "Văn bản mới (Chờ nhập nội dung)";
+      document.getElementById('spec-mode-badge').innerText = "Dữ liệu người dùng trống";
     }
 
     // SUB-TAB SWITCHER FOR TAB 1
@@ -905,6 +1020,10 @@ class BrokenPaymentPage:
 
     async function generateTestCases() {
       const content = getPRDContent();
+      if (!content || !content.trim()) {
+        alert("Vui lòng nhập nội dung PRD/SRS hoặc bấm nút 'Tải File PRD' từ máy tính trước khi phân tích!");
+        return;
+      }
       const format = document.getElementById('prd-input-format').value;
       const btn = document.getElementById('btn-generate-tc');
       btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang Phân Tích...`;
@@ -1047,7 +1166,11 @@ class BrokenPaymentPage:
     // TAB 2: POM CODEGEN & SELF-HEALING STUDIO
     async function generatePOM() {
       const featureInput = document.getElementById('pom-feature-input');
-      const feature = (featureInput && featureInput.value.trim()) ? featureInput.value.trim() : "Thanh Toán & Đặt Hàng";
+      if (!featureInput || !featureInput.value.trim()) {
+        alert("Vui lòng nhập tên chức năng / tiêu chí vào ô 'Tính năng' để sinh mã POM chuẩn thực tế!");
+        return;
+      }
+      const feature = featureInput.value.trim();
       const lang = document.getElementById('pom-lang-select').value;
       const prd = typeof getPRDContent === 'function' ? getPRDContent() : null;
       const btn = document.getElementById('btn-generate-pom');
@@ -1108,6 +1231,7 @@ class BrokenPaymentPage:
 
     // WORKSPACE MODE SWITCHER: 'codegen' vs 'healing'
     function switchPOMWorkspace(mode) {
+      currentWorkspaceMode = mode;
       const codegenHeader = document.getElementById('pom-codegen-header');
       const healingHeader = document.getElementById('pom-healing-header');
       const pomContainer = document.getElementById('monaco-pom-container');
@@ -1136,15 +1260,68 @@ class BrokenPaymentPage:
         btnCodegen.className = "px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition flex items-center space-x-1";
         btnHealing.className = "px-2.5 py-1 rounded-md bg-purple-600 text-white font-semibold transition flex items-center space-x-1";
 
-        // Initialize Diff Editor with broken code if not already set
+        // Initialize Diff Editor with clean editable models if not already set
         if (diffEditor) {
           const currentModel = diffEditor.getModel();
           if (!currentModel || !currentModel.original) {
-            loadSampleBrokenCode();
+            const origModel = monaco.editor.createModel('# Dán hoặc tải file mã nguồn kiểm thử thực tế của bạn vào đây (Bên trái có thể chỉnh sửa trực tiếp)...\n', 'python');
+            const modModel = monaco.editor.createModel('# Kết quả sau khi bấm "Kích Hoạt Tự Sửa Lỗi (Heal Now)" sẽ hiển thị tại đây...\n', 'python');
+            diffEditor.setModel({ original: origModel, modified: modModel });
           }
           diffEditor.layout();
         }
       }
+    }
+
+    function handleTestScriptUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const content = e.target.result;
+        switchPOMWorkspace('healing');
+        if (diffEditor) {
+          const origModel = monaco.editor.createModel(content, 'python');
+          const modModel = monaco.editor.createModel('# Bấm nút "Kích Hoạt Tự Sửa Lỗi (Heal Now)" để sửa mã thật của bạn...', 'python');
+          diffEditor.setModel({ original: origModel, modified: modModel });
+          diffEditor.layout();
+        }
+        if (pomEditor) {
+          pomEditor.setValue(content);
+        }
+        const pill = document.getElementById('heal-turn-pill');
+        if (pill) pill.innerText = `File: ${file.name} (${(file.size / 1024).toFixed(1)} KB) - Đã nạp`;
+        const statusTag = document.getElementById('healing-status-tag');
+        if (statusTag) {
+          statusTag.className = "px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20";
+          statusTag.innerText = "CUSTOM CODE LOADED";
+        }
+        const errList = document.getElementById('healing-errors-list');
+        if (errList) errList.innerHTML = `<div class="text-blue-300 font-mono">📁 Đã tải mã nguồn thật từ file "${file.name}". Bấm "Kích Hoạt Tự Sửa Lỗi" hoặc "Run Test Now".</div>`;
+      };
+      reader.readAsText(file);
+    }
+
+    function clearPOMEditor() {
+      if (pomEditor) pomEditor.setValue('');
+    }
+
+    function clearHealEditor() {
+      if (diffEditor) {
+        const origModel = monaco.editor.createModel('', 'python');
+        const modModel = monaco.editor.createModel('', 'python');
+        diffEditor.setModel({ original: origModel, modified: modModel });
+        diffEditor.layout();
+      }
+      const pill = document.getElementById('heal-turn-pill');
+      if (pill) pill.innerText = "Trống (Sẵn sàng dán hoặc tải mã mới)";
+      const statusTag = document.getElementById('healing-status-tag');
+      if (statusTag) {
+        statusTag.className = "px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400 shrink-0 border border-slate-700";
+        statusTag.innerText = "IDLE";
+      }
+      const errList = document.getElementById('healing-errors-list');
+      if (errList) errList.innerHTML = '<div class="text-slate-500 italic">Dán hoặc tải code kiểm thử vào khung bên trái.</div>';
     }
 
     function loadSampleBrokenCode() {
@@ -1166,6 +1343,10 @@ class BrokenPaymentPage:
     async function triggerSelfHealing() {
       if (!diffEditor || !diffEditor.getModel()) return;
       const brokenCode = diffEditor.getModel().original.getValue();
+      if (!brokenCode || !brokenCode.trim() || brokenCode.startsWith('# Dán hoặc tải')) {
+        alert("Vui lòng dán hoặc tải file mã nguồn kiểm thử thực tế của bạn vào khung bên trái trước khi bấm Tự Sửa Lỗi!");
+        return;
+      }
       const btn = document.getElementById('btn-trigger-heal');
       const pill = document.getElementById('heal-turn-pill');
       const statusTag = document.getElementById('healing-status-tag');
@@ -1279,37 +1460,70 @@ class BrokenPaymentPage:
       const statusPill = document.getElementById('runner-status-pill');
       const btn = document.getElementById('btn-run-live');
       
-      terminal.innerHTML = '<span class="text-blue-400">[INFO] Khởi động Isolated Sandbox Runner...</span>';
+      let code = "";
+      const isHealing = (typeof currentWorkspaceMode !== 'undefined' && currentWorkspaceMode === 'healing') ||
+        (document.getElementById('monaco-diff-container') && !document.getElementById('monaco-diff-container').classList.contains('hidden'));
+
+      if (isHealing) {
+        if (diffEditor) {
+          const mod = diffEditor.getModifiedEditor().getValue();
+          const orig = diffEditor.getOriginalEditor().getValue();
+          code = (mod && mod.trim() && !mod.startsWith('# Bấm nút')) ? mod : orig;
+        }
+      } else {
+        if (pomEditor) {
+          code = pomEditor.getValue();
+        }
+      }
+
+      if (!code || !code.trim()) {
+        terminal.innerHTML = '<span class="text-rose-400">[ERROR] Chưa có mã kiểm thử nào để chạy. Vui lòng bấm "Tải Code Thật (.py)" hoặc dán mã vào khung biên tập.</span>';
+        statusPill.innerText = "NO CODE";
+        statusPill.className = "text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 font-mono";
+        btn.innerHTML = `<i class="fa-solid fa-play"></i> <span>▶ Run Test Now</span>`;
+        return;
+      }
+
+      terminal.innerHTML = '<span class="text-blue-400">[INFO] Khởi động Real Python & Playwright Runner...</span>';
       statusPill.innerText = "RUNNING";
       statusPill.className = "text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono animate-pulse";
       btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Running...`;
-
-      const code = pomEditor ? pomEditor.getValue() : "from playwright.sync_api import Page\ndef test_dummy(): pass";
 
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/api/v1/qa/ws/runner`;
         const ws = new WebSocket(wsUrl);
         const logs = [];
+        let finalStatus = "PASSED";
 
         ws.onopen = () => {
-          ws.send(JSON.stringify({ code: code, framework: "playwright" }));
+          ws.send(JSON.stringify({ code: code, framework: "playwright", language: "python" }));
         };
         ws.onmessage = (event) => {
-          logs.push(event.data);
-          terminal.innerHTML = `<span class="text-emerald-400 whitespace-pre-wrap">${logs.join('\n')}</span>`;
+          const msg = event.data;
+          if (msg === "[STATUS] PASSED") {
+            finalStatus = "PASSED";
+            return;
+          } else if (msg === "[STATUS] FAILED") {
+            finalStatus = "FAILED";
+            return;
+          }
+          logs.push(msg);
+          terminal.innerHTML = `<span class="text-slate-200 whitespace-pre-wrap">${logs.join('\n')}</span>`;
           terminal.scrollTop = terminal.scrollHeight;
         };
         ws.onclose = () => {
-          statusPill.innerText = "PASSED";
-          statusPill.className = "text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono";
+          statusPill.innerText = finalStatus;
+          statusPill.className = finalStatus === "PASSED"
+            ? "text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono"
+            : "text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 font-mono";
           btn.innerHTML = `<i class="fa-solid fa-play"></i> <span>▶ Run Test Now</span>`;
         };
         ws.onerror = async () => {
           const res = await fetch('/api/v1/qa/run-test', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: code, framework: "playwright", test_name: "test_checkout" })
+            body: JSON.stringify({ code: code, framework: "playwright", test_name: "user_test_spec" })
           });
           const data = await res.json();
           terminal.innerHTML = `<span class="${data.status === 'PASSED' ? 'text-emerald-400' : 'text-rose-400'} whitespace-pre-wrap">${data.terminal_logs}</span>`;
@@ -1569,22 +1783,84 @@ class BrokenPaymentPage:
       }
     }
 
+    // TAB 3: CUSTOM CODEBASE FILES UPLOAD
+    async function handleCodebaseFilesUpload(event) {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      const fileItems = [];
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const text = await f.text();
+        fileItems.push({
+          file_path: f.webkitRelativePath || f.name,
+          content: text
+        });
+      }
+
+      try {
+        const res = await fetch('/api/v1/codebase/index', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: fileItems })
+        });
+        const data = await res.json();
+        alert(`Đã index thành công ${data.total_files_indexed} file mã nguồn thật (${data.total_chunks_created} AST nodes) vào GraphRAG!`);
+        initCytoscape();
+      } catch (e) {
+        alert("Lỗi khi index file mã nguồn: " + e);
+      }
+    }
+
     // TAB 4: SYNTHETIC DATA
+    function handleSynthFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const content = e.target.result;
+        if (schemaEditor) {
+          schemaEditor.setValue(content);
+        }
+        generateSynthetic();
+      };
+      reader.readAsText(file);
+    }
+
+    function clearSynthEditor() {
+      if (schemaEditor) {
+        schemaEditor.setValue('{\n  "type": "object",\n  "properties": {}\n}');
+      }
+      document.getElementById('synth-valid-pre').innerText = '// Chờ sinh dữ liệu...';
+      document.getElementById('synth-boundary-pre').innerText = '// Chờ sinh dữ liệu...';
+      document.getElementById('synth-invalid-pre').innerText = '// Chờ sinh dữ liệu...';
+      document.getElementById('synth-security-pre').innerText = '// Chờ sinh dữ liệu...';
+    }
+
     async function generateSynthetic() {
       const schemaStr = schemaEditor ? schemaEditor.getValue() : SAMPLE_SCHEMA;
+      const endpointEl = document.getElementById('synth-endpoint');
+      const methodEl = document.getElementById('synth-method');
+      const endpoint = endpointEl ? endpointEl.value : "/api/v1/transfers";
+      const method = methodEl ? methodEl.value : "POST";
+
       try {
         const schema = JSON.parse(schemaStr);
         const res = await fetch('/api/v1/qa/synthetic-data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ schema_definition: schema, endpoint_path: "/api/checkout" })
+          body: JSON.stringify({
+            schema_definition: schema,
+            endpoint_path: endpoint,
+            method: method
+          })
         });
         const data = await res.json();
 
-        document.getElementById('synth-valid-pre').innerText = JSON.stringify(data.valid_payloads[0], null, 2);
-        document.getElementById('synth-boundary-pre').innerText = JSON.stringify(data.boundary_payloads[0], null, 2);
-        document.getElementById('synth-invalid-pre').innerText = JSON.stringify(data.invalid_payloads[0], null, 2);
-        document.getElementById('synth-security-pre').innerText = JSON.stringify(data.security_payloads[0], null, 2);
+        document.getElementById('synth-valid-pre').innerText = JSON.stringify(data.valid_payloads, null, 2);
+        document.getElementById('synth-boundary-pre').innerText = JSON.stringify(data.boundary_payloads, null, 2);
+        document.getElementById('synth-invalid-pre').innerText = JSON.stringify(data.invalid_payloads, null, 2);
+        document.getElementById('synth-security-pre').innerText = JSON.stringify(data.security_payloads, null, 2);
       } catch (e) {
         alert("Schema JSON không hợp lệ: " + e);
       }
@@ -1597,13 +1873,42 @@ class BrokenPaymentPage:
     }
 
     // TAB 5: PR BOT & WEBHOOK SIMULATOR
+    function handleDiffFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const content = e.target.result;
+        if (gitDiffEditor) {
+          gitDiffEditor.setValue(content);
+        }
+        analyzePR();
+      };
+      reader.readAsText(file);
+    }
+
+    function clearDiffEditor() {
+      if (gitDiffEditor) gitDiffEditor.setValue('');
+      document.getElementById('pr-bot-output').innerText = '// Trống. Vui lòng dán hoặc tải file git diff để phân tích tác động PR.';
+    }
+
     async function analyzePR() {
       const diff = gitDiffEditor ? gitDiffEditor.getValue() : SAMPLE_DIFF;
+      const titleEl = document.getElementById('pr-title-input');
+      const numEl = document.getElementById('pr-num-input');
+      const prTitle = titleEl && titleEl.value ? titleEl.value : "Refactor Payment Gateways";
+      const prNumber = numEl && numEl.value ? parseInt(numEl.value, 10) || 1 : 1;
+
+      if (!diff || !diff.trim()) {
+        alert("Vui lòng nhập nội dung Git Diff hoặc bấm 'Tải Diff' từ máy tính!");
+        return;
+      }
+
       try {
         const res = await fetch('/api/v1/pr/analyze-impact', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pr_title: "Refactor Payment Gateways", pr_number: 88, git_diff: diff })
+          body: JSON.stringify({ pr_title: prTitle, pr_number: prNumber, git_diff: diff })
         });
         const data = await res.json();
         document.getElementById('pr-bot-output').innerText = data.markdown_comment;
@@ -1614,6 +1919,16 @@ class BrokenPaymentPage:
 
     async function simulateWebhook() {
       const diff = gitDiffEditor ? gitDiffEditor.getValue() : SAMPLE_DIFF;
+      const titleEl = document.getElementById('pr-title-input');
+      const numEl = document.getElementById('pr-num-input');
+      const prTitle = titleEl && titleEl.value ? titleEl.value : "feat(security): enforce cryptographic transaction tokens";
+      const prNumber = numEl && numEl.value ? parseInt(numEl.value, 10) || 108 : 108;
+
+      if (!diff || !diff.trim()) {
+        alert("Vui lòng nhập nội dung Git Diff trước khi gửi sự kiện Webhook!");
+        return;
+      }
+
       try {
         const res = await fetch('/api/v1/webhook/github', {
           method: 'POST',
@@ -1623,10 +1938,10 @@ class BrokenPaymentPage:
           },
           body: JSON.stringify({
             action: 'opened',
-            number: 108,
+            number: prNumber,
             pull_request: {
-              number: 108,
-              title: "feat(security): enforce cryptographic transaction tokens",
+              number: prNumber,
+              title: prTitle,
               diff: diff
             }
           })
