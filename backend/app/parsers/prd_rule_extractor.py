@@ -167,6 +167,19 @@ class PRDRuleExtractor:
                 steps=steps,
                 docstring=f"Executes {feature_name} action with PRD-extracted parameters."
             ))
+        else:
+            main_action_name = f"submit_{slug}"
+            locators["PRIMARY_INPUT"] = f"[data-testid='{slug}-input'], input[name='{slug}']"
+            locators["SUBMIT_BUTTON"] = f"[data-testid='btn-{slug}'], button[type='submit']"
+            actions.append(SemanticAction(
+                method_name=main_action_name,
+                params=[{"name": "value", "type": "str", "default": "valid_entry"}],
+                steps=[
+                    "self.fill_input(self.PRIMARY_INPUT, str(value))",
+                    "self.click_element(self.SUBMIT_BUTTON)"
+                ],
+                docstring=f"Executes {feature_name} action."
+            ))
 
         return SemanticPOMSpec(
             class_name=class_name,
@@ -181,7 +194,7 @@ class PRDRuleExtractor:
     def _extract_fields(cls, when_text: str) -> List[SemanticField]:
         fields = []
         fill_matches = re.finditer(
-            r"(?:nhập|điền|sửa|thay đổi|chỉnh sửa|enter|fill|type|edit|update)\s+([a-zA-Z0-9_\u00C0-\u1EF9\s]+?)(?:\s*(?:là|bằng|=|vào)?\s*['\"]([^'\"]+)['\"]|\s+([0-9.,]+(?:\s*(?:%|vnd|usd|kg))?))?(?=\s+(?:và|va|and|chọn|bấm|nhấn|click|gửi|,|$))",
+            r"(?:nhập|nhap|điền|dien|sửa|sua|thay đổi|thay doi|chỉnh sửa|chinh sua|enter|fill|type|edit|update)\s+([a-zA-Z0-9_\u00C0-\u1EF9\s]+?)(?:\s*(?:là|la|bằng|bang|=|vào|vao)?\s*['\"]([^'\"]+)['\"]|\s+([0-9.,]+(?:\s*(?:%|vnd|usd|kg))?))?(?=\s+(?:và|va|and|chọn|chon|bấm|bam|nhấn|nhan|click|gửi|gui|,|$))",
             when_text, re.IGNORECASE
         )
         for m in fill_matches:
@@ -198,7 +211,7 @@ class PRDRuleExtractor:
                 ))
 
         select_matches = re.finditer(
-            r"(?:chọn|lựa chọn|tích chọn|select|choose|pick|check)\s+([a-zA-Z0-9_\u00C0-\u1EF9\s]+?)(?:\s*(?:là|bằng|=|vào)?\s*['\"]([^'\"]+)['\"]|\s+([0-9.,]+(?:\s*(?:%|vnd|usd|kg))?))?(?=\s+(?:và|va|and|nhập|sửa|bấm|nhấn|click|gửi|,|$))",
+            r"(?:chọn|chon|lựa chọn|lua chon|tích chọn|tich chon|select|choose|pick|check)\s+([a-zA-Z0-9_\u00C0-\u1EF9\s]+?)(?:\s*(?:là|la|bằng|bang|=|vào|vao)?\s*['\"]([^'\"]+)['\"]|\s+([0-9.,]+(?:\s*(?:%|vnd|usd|kg))?))?(?=\s+(?:và|va|and|nhập|nhap|sửa|sua|bấm|bam|nhấn|nhan|click|gửi|gui|,|$))",
             when_text, re.IGNORECASE
         )
         for m in select_matches:
@@ -220,12 +233,12 @@ class PRDRuleExtractor:
     def _extract_buttons(cls, when_text: str) -> List[SemanticButton]:
         buttons = []
         click_matches = re.finditer(
-            r"(?:bấm|nhấn|click|submit|ấn|gửi yêu cầu|gui yeu cau|gửi)\s*(?:vào)?(?:\s*nút)?\s*(?:['\"]([^'\"]+)['\"]|([a-zA-Z0-9_\u00C0-\u1EF9\s]+?)(?=\s+(?:và|va|and|then|,|$)))",
+            r"(?:bấm|bam|nhấn|nhan|click|submit|ấn|an|gửi yêu cầu|gui yeu cau|gửi|gui)\s*(?:vào|vao)?(?:\s*nút|nut)?\s*(?:['\"]([^'\"]+)['\"]|([a-zA-Z0-9_\u00C0-\u1EF9\s]+?)(?=\s+(?:và|va|and|then|,|$)))",
             when_text, re.IGNORECASE
         )
         for m in click_matches:
             btn_name = (m.group(1) or m.group(2) or "").strip()
-            if btn_name and not any(k in btn_name.lower() for k in ["chọn", "nhập", "điền"]):
+            if btn_name and not any(k in btn_name.lower() for k in ["chọn", "chon", "nhập", "nhap", "điền", "dien"]):
                 btn_slug = slugify(btn_name)
                 buttons.append(SemanticButton(
                     name=f"btn_{btn_slug}",
