@@ -72,26 +72,26 @@
       </div>
       <div class="flex items-center space-x-2.5">
         <span class="font-extrabold text-base tracking-tight text-white">AI QA Studio</span>
-        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 tracking-wider uppercase">Enterprise</span>
+        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 tracking-wider uppercase">Tier-1 Enterprise</span>
       </div>
     </div>
 
     <!-- Center Navigation Tabs -->
     <nav class="hidden md:flex items-center space-x-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
       <button onclick="switchTab('qa')" id="nav-qa" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 shadow-sm transition">
-        <i class="fa-solid fa-clipboard-check mr-1.5"></i> PRD to Test Cases
+        <i class="fa-solid fa-clipboard-check mr-1.5"></i> PRD & Schemas
       </button>
       <button onclick="switchTab('pom')" id="nav-pom" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition">
-        <i class="fa-solid fa-code mr-1.5"></i> POM & Diff Healer
+        <i class="fa-solid fa-code mr-1.5"></i> POM & Locators
       </button>
       <button onclick="switchTab('graph')" id="nav-graph" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition">
-        <i class="fa-solid fa-diagram-project mr-1.5"></i> Architecture & Graph
+        <i class="fa-solid fa-diagram-project mr-1.5"></i> GraphRAG & Codebase
       </button>
       <button onclick="switchTab('synthetic')" id="nav-synthetic" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition">
-        <i class="fa-solid fa-flask mr-1.5"></i> Mock Data
+        <i class="fa-solid fa-flask mr-1.5"></i> Multi-Schema Mock
       </button>
       <button onclick="switchTab('prbot')" id="nav-prbot" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition">
-        <i class="fa-solid fa-code-pull-request mr-1.5"></i> CI/CD Impact
+        <i class="fa-solid fa-code-pull-request mr-1.5"></i> CI/CD & Webhook
       </button>
     </nav>
 
@@ -99,11 +99,11 @@
     <div class="flex items-center space-x-3 text-xs">
       <div class="flex items-center space-x-2 text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span class="font-mono text-[11px] font-semibold">23/23 Tests Passed</span>
+        <span class="font-mono text-[11px] font-semibold">42/42 Tests Passed (100%)</span>
       </div>
       <a href="/docs" target="_blank" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition flex items-center space-x-1.5">
         <i class="fa-solid fa-bolt text-amber-400"></i>
-        <span>API Docs</span>
+        <span>Swagger Docs</span>
       </a>
       <a href="https://github.com/thanhdam1/ai-qa-assistiant" target="_blank" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition flex items-center space-x-1.5">
         <i class="fa-brands fa-github"></i>
@@ -115,16 +115,22 @@
   <!-- BODY CONTENT -->
   <div class="flex-1 overflow-hidden flex flex-col">
 
-    <!-- ==================== TAB 1: PRD TO TEST CASES & RTM ==================== -->
+    <!-- ==================== TAB 1: PRD / SCHEMAS TO TEST CASES & RTM ==================== -->
     <section id="panel-qa" class="tab-panel flex-1 flex flex-col p-5 overflow-hidden space-y-4">
       <div class="flex items-center justify-between shrink-0">
         <div>
-          <h2 class="text-lg font-bold text-white tracking-tight">PRD / User Stories to ISTQB Test Suite</h2>
-          <p class="text-xs text-slate-400">Trích xuất tiêu chí chấp nhận Gherkin, sinh bộ kịch bản kiểm thử (Positive, BVA, Equivalence, Security) và ma trận RTM 100%.</p>
+          <h2 class="text-lg font-bold text-white tracking-tight">PRD, OpenAPI, GraphQL & AsyncAPI Test Suite Generator</h2>
+          <p class="text-xs text-slate-400">Trích xuất Acceptance Criteria Gherkin, sinh bộ kịch bản kiểm thử (Positive, BVA, OWASP Security) và ma trận RTM liên kết mã nguồn Code AST 100%.</p>
         </div>
         <div class="flex items-center space-x-2">
-          <button onclick="loadSamplePRD()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-blue-400 border border-slate-800 transition">
-            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Tải PRD Mẫu
+          <!-- Format Selector -->
+          <select id="prd-input-format" onchange="onFormatChange()" class="text-xs bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none font-medium">
+            <option value="prd">Format: PRD Markdown</option>
+            <option value="graphql">Format: GraphQL SDL</option>
+            <option value="asyncapi">Format: AsyncAPI (Kafka/RabbitMQ)</option>
+          </select>
+          <button onclick="loadCurrentSample()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-blue-400 border border-slate-800 transition">
+            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Tải Mẫu
           </button>
           <button onclick="generateTestCases()" id="btn-generate-tc" class="text-xs px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold shadow-lg shadow-blue-500/20 transition flex items-center space-x-1.5">
             <i class="fa-solid fa-play"></i>
@@ -134,18 +140,18 @@
       </div>
 
       <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-0">
-        <!-- Left: Monaco Editor for PRD -->
+        <!-- Left: Monaco Editor for PRD / Schema -->
         <div class="lg:col-span-5 flex flex-col glass-panel rounded-2xl border border-slate-800/80 overflow-hidden">
           <div class="h-9 bg-slate-900/90 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs font-semibold text-slate-400">
             <span class="flex items-center space-x-2">
-              <i class="fa-brands fa-markdown text-blue-400"></i>
-              <span class="text-slate-200">Checkout_Feature.md (PRD Editor)</span>
+              <i class="fa-brands fa-markdown text-blue-400" id="spec-icon"></i>
+              <span class="text-slate-200" id="spec-filename">Checkout_Feature.md (Input Specification)</span>
             </span>
-            <span class="text-[10px] text-slate-500 font-mono">Markdown Mode</span>
+            <span class="text-[10px] text-slate-500 font-mono" id="spec-mode-badge">Markdown Mode</span>
           </div>
           <div class="flex-1 w-full bg-slate-950 relative overflow-hidden">
             <div id="monaco-prd-editor" class="w-full h-full"></div>
-            <textarea id="prd-fallback-textarea" class="w-full h-full bg-slate-950 p-4 font-mono text-xs text-slate-200 outline-none resize-none leading-relaxed" placeholder="Nhập hoặc dán nội dung PRD/User Story tại đây..."># Tính năng Đặt Hàng & Thanh Toán (Checkout)
+            <textarea id="prd-fallback-textarea" class="w-full h-full bg-slate-950 p-4 font-mono text-xs text-slate-200 outline-none resize-none leading-relaxed" placeholder="Nhập hoặc dán nội dung PRD/User Story/GraphQL/AsyncAPI tại đây..."># Tính năng Đặt Hàng & Thanh Toán (Checkout)
 
 ## User Story: Khách hàng hoàn tất thanh toán
 As a registered customer, I want to checkout my cart, so that I receive my items.
@@ -234,20 +240,19 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       </div>
     </section>
 
-    <!-- ==================== TAB 2: POM CODEGEN & DIFF HEALER ==================== -->
+    <!-- ==================== TAB 2: POM CODEGEN & RESILIENT LOCATOR STUDIO ==================== -->
     <section id="panel-pom" class="tab-panel flex-1 flex flex-col p-5 overflow-hidden space-y-4 hidden">
       <div class="flex items-center justify-between shrink-0">
         <div>
-          <h2 class="text-lg font-bold text-white tracking-tight">Page Object Model (POM) & Split Diff Healer</h2>
-          <p class="text-xs text-slate-400">Sinh mã nguồn Playwright theo chuẩn POM, kiểm tra cú pháp AST và trình diễn vòng lặp Tự sửa lỗi cú pháp (Self-Healing).</p>
+          <h2 class="text-lg font-bold text-white tracking-tight">Page Object Model (POM) & Resilient Locator Studio</h2>
+          <p class="text-xs text-slate-400">Sinh mã nguồn Playwright theo chuẩn POM, kiểm tra cú pháp AST, và tính toán bộ định vị bền vững theo chuẩn W3C Accessibility.</p>
         </div>
         <div class="flex items-center space-x-2">
-          <!-- Toggle Diff Mode -->
           <button onclick="toggleDiffMode()" id="btn-toggle-diff" class="text-xs px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-purple-400 border border-slate-800 transition flex items-center space-x-1">
             <i class="fa-solid fa-code-compare"></i>
             <span id="diff-mode-text">Bật Split Diff Viewer</span>
           </button>
-          <select id="pom-lang-select" class="text-xs bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-300 focus:outline-none">
+          <select id="pom-lang-select" class="text-xs bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-300 focus:outline-none font-medium">
             <option value="python">Playwright (Python) + PyTest</option>
             <option value="typescript">Playwright (TypeScript)</option>
           </select>
@@ -288,38 +293,73 @@ As a registered customer, I want to checkout my cart, so that I receive my items
           <div id="monaco-diff-container" class="flex-1 w-full bg-slate-950 hidden"></div>
         </div>
 
-        <!-- Terminal & Execution Output Console -->
-        <div class="lg:col-span-4 flex flex-col glass-panel rounded-2xl border border-slate-800/80 overflow-hidden">
-          <div class="h-9 bg-slate-900/90 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs font-semibold text-slate-400">
-            <span class="flex items-center space-x-2">
-              <i class="fa-solid fa-terminal text-emerald-400"></i>
-              <span class="text-slate-200">Execution Console</span>
-            </span>
-            <span id="runner-status-pill" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">IDLE</span>
+        <!-- Right Side: Terminal + Resilient Locator Synthesizer Studio -->
+        <div class="lg:col-span-4 flex flex-col space-y-4 min-h-0">
+          <!-- Terminal & Execution Output Console -->
+          <div class="h-1/2 flex flex-col glass-panel rounded-2xl border border-slate-800/80 overflow-hidden">
+            <div class="h-9 bg-slate-900/90 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs font-semibold text-slate-400">
+              <span class="flex items-center space-x-2">
+                <i class="fa-solid fa-terminal text-emerald-400"></i>
+                <span class="text-slate-200">Execution Console</span>
+              </span>
+              <span id="runner-status-pill" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">IDLE</span>
+            </div>
+            <div class="flex-1 bg-slate-950 p-3 font-mono text-[11px] text-slate-300 overflow-y-auto custom-scroll leading-relaxed" id="terminal-output">
+              <span class="text-slate-500">// Nhấn nút "▶ Run Test Now" để thực thi test automation...</span>
+            </div>
           </div>
 
-          <div class="flex-1 bg-slate-950 p-4 font-mono text-[11px] text-slate-300 overflow-y-auto custom-scroll leading-relaxed" id="terminal-output">
-            <span class="text-slate-500">// Nhấn nút "▶ Run Test Now" để thực thi test automation...</span>
+          <!-- Resilient Locator Studio -->
+          <div class="h-1/2 flex flex-col glass-panel rounded-2xl border border-slate-800/80 overflow-hidden">
+            <div class="h-9 bg-slate-900/90 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs font-semibold text-purple-400">
+              <span class="flex items-center space-x-2">
+                <i class="fa-solid fa-crosshairs"></i>
+                <span class="text-slate-200">Resilient Locator Studio</span>
+              </span>
+              <span class="text-[10px] text-slate-500 font-mono">Testing Library P1-P6</span>
+            </div>
+            <div class="p-3 bg-slate-900/40 border-b border-slate-800/80 space-y-2 text-xs">
+              <div class="grid grid-cols-3 gap-2">
+                <input type="text" id="loc-tag" value="button" placeholder="Tag: button" class="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-200 font-mono text-[11px] focus:outline-none">
+                <input type="text" id="loc-testid" value="checkout-btn" placeholder="data-testid" class="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-200 font-mono text-[11px] focus:outline-none">
+                <input type="text" id="loc-text" value="Confirm Order" placeholder="Text content" class="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-200 font-mono text-[11px] focus:outline-none">
+              </div>
+              <button onclick="synthesizeLocators()" class="w-full py-1 bg-purple-600 hover:bg-purple-500 text-white rounded font-semibold text-[11px] transition">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Tính Toán Bộ Định Vị Bền Vững
+              </button>
+            </div>
+            <div class="flex-1 bg-slate-950 p-2.5 overflow-y-auto custom-scroll space-y-1.5" id="locator-results">
+              <div class="text-[11px] text-slate-500 italic p-2 text-center">Bấm nút bên trên để tạo danh sách Playwright locators tối ưu.</div>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ==================== TAB 3: CODEBASE ARCHITECTURE & GRAPH ==================== -->
+    <!-- ==================== TAB 3: CODEBASE INTELLIGENCE & GRAPHRAG ==================== -->
     <section id="panel-graph" class="tab-panel flex-1 flex flex-col p-5 overflow-hidden space-y-4 hidden">
       <div class="flex items-center justify-between shrink-0">
         <div>
-          <h2 class="text-lg font-bold text-white tracking-tight">Codebase Intelligence & Interactive Architecture Graph</h2>
-          <p class="text-xs text-slate-400">Phân tích cây cú pháp AST đa ngôn ngữ, truy vết Call-Graph và trực quan hóa mạng lưới liên kết giữa các tầng Controller, Service, Repository.</p>
+          <h2 class="text-lg font-bold text-white tracking-tight">Codebase Intelligence & GraphRAG Impact Radar</h2>
+          <p class="text-xs text-slate-400">Phân tích cây cú pháp AST, đồ thị tri thức GraphRAG liên kết Controller ↔ Service ↔ Repository, và AST Data-Flow Taint Analysis.</p>
         </div>
         <div class="flex items-center space-x-2">
+          <!-- GraphRAG Impact Radar Search Input -->
+          <div class="flex items-center space-x-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs">
+            <i class="fa-solid fa-radar text-amber-400"></i>
+            <input type="text" id="impact-symbol-input" value="OrderService" class="bg-transparent text-slate-200 font-mono w-36 focus:outline-none text-xs" placeholder="Symbol name...">
+          </div>
+          <button onclick="traceGraphImpact()" class="text-xs px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold transition">
+            <i class="fa-solid fa-wave-square mr-1"></i> Impact Radar
+          </button>
+
           <!-- GitHub Cloner Input -->
           <div class="flex items-center space-x-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs">
             <i class="fa-brands fa-github text-slate-400"></i>
-            <input type="text" id="github-url-input" value="https://github.com/dotnet/eShop" class="bg-transparent text-slate-200 font-mono w-56 focus:outline-none text-xs" placeholder="https://github.com/owner/repo">
+            <input type="text" id="github-url-input" value="https://github.com/dotnet/eShop" class="bg-transparent text-slate-200 font-mono w-44 focus:outline-none text-xs" placeholder="https://github.com/owner/repo">
           </div>
           <button onclick="importGitHubRepo()" id="btn-import-gh" class="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold transition">
-            <i class="fa-solid fa-download mr-1"></i> Import & Index
+            <i class="fa-solid fa-download mr-1"></i> Index Repo
           </button>
         </div>
       </div>
@@ -328,15 +368,18 @@ As a registered customer, I want to checkout my cart, so that I receive my items
         <!-- Interactive Cytoscape & Mermaid Graph -->
         <div class="lg:col-span-7 flex flex-col glass-panel rounded-2xl border border-slate-800/80 overflow-hidden">
           <div class="h-9 bg-slate-900/90 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs">
-            <div class="flex space-x-2">
+            <div class="flex space-x-3">
               <button onclick="switchGraphMode('network')" id="btn-graph-net" class="font-semibold text-blue-400">
                 <i class="fa-solid fa-circle-nodes mr-1"></i> 2D Call Network
               </button>
               <button onclick="switchGraphMode('sequence')" id="btn-graph-seq" class="text-slate-400 hover:text-slate-200">
                 <i class="fa-solid fa-arrow-right-arrow-left mr-1"></i> Sequence Flow
               </button>
+              <button onclick="switchGraphMode('taint')" id="btn-graph-taint" class="text-slate-400 hover:text-slate-200">
+                <i class="fa-solid fa-shield-halved mr-1"></i> AST Taint Data-Flow
+              </button>
             </div>
-            <span class="text-[10px] text-slate-500 font-mono">Zoom, Pan & Click nodes to inspect</span>
+            <span class="text-[10px] text-slate-500 font-mono">Zoom, Pan & Click nodes</span>
           </div>
 
           <!-- Cytoscape Container -->
@@ -347,12 +390,17 @@ As a registered customer, I want to checkout my cart, so that I receive my items
           <div id="mermaid-flow-wrapper" class="flex-1 bg-slate-950 p-4 overflow-auto custom-scroll hidden text-center">
             <div id="mermaid-flow-target"></div>
           </div>
+          <!-- AST Taint Flow Container -->
+          <div id="taint-flow-wrapper" class="flex-1 bg-slate-950 p-5 overflow-auto custom-scroll hidden space-y-3">
+            <div class="text-xs text-slate-400 mb-2">Luồng di chuyển dữ liệu đầu vào (Taint Analysis) qua các tầng kiến trúc:</div>
+            <div id="taint-steps-target" class="space-y-2.5 font-mono text-xs"></div>
+          </div>
         </div>
 
-        <!-- Right: Architectural Q&A Chat -->
+        <!-- Right: Architectural Q&A Chat & Impact Result -->
         <div class="lg:col-span-5 flex flex-col glass-panel rounded-2xl border border-slate-800/80 overflow-hidden">
           <div class="h-9 bg-slate-900/90 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs font-semibold text-slate-300">
-            <span>Architectural Reasoning Q&A</span>
+            <span>Architectural Reasoning & GraphRAG</span>
             <span class="text-[10px] text-cyan-400 font-mono">AST Grounded</span>
           </div>
 
@@ -366,18 +414,18 @@ As a registered customer, I want to checkout my cart, so that I receive my items
 
           <!-- Answer Body -->
           <div class="flex-1 bg-slate-950 p-4 text-xs text-slate-300 overflow-y-auto custom-scroll leading-relaxed whitespace-pre-line" id="arch-explanation">
-            <span class="text-slate-500">// Nhập câu hỏi kiến trúc bên trên để nhận phân tích chi tiết luồng dữ liệu...</span>
+            <span class="text-slate-500">// Nhập câu hỏi kiến trúc bên trên hoặc bấm "Impact Radar" để phân tích chi tiết...</span>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ==================== TAB 4: SYNTHETIC DATA STUDIO ==================== -->
+    <!-- ==================== TAB 4: MULTI-SCHEMA MOCK STUDIO ==================== -->
     <section id="panel-synthetic" class="tab-panel flex-1 flex flex-col p-5 overflow-hidden space-y-4 hidden">
       <div class="flex items-center justify-between shrink-0">
         <div>
-          <h2 class="text-lg font-bold text-white tracking-tight">Synthetic Test Fixture Studio</h2>
-          <p class="text-xs text-slate-400">Sinh dữ liệu mock đa tầng (Hợp lệ, Ca biên, Ca lỗi, Injection SQLi/XSS) dựa trên cấu trúc OpenAPI Schema.</p>
+          <h2 class="text-lg font-bold text-white tracking-tight">Multi-Schema Synthetic Test Fixture Studio</h2>
+          <p class="text-xs text-slate-400">Sinh dữ liệu mock đa tầng (Hợp lệ, Ca biên, Ca lỗi, Injection SQLi/XSS) hỗ trợ OpenAPI v3, GraphQL và AsyncAPI.</p>
         </div>
         <button onclick="generateSynthetic()" class="text-xs px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold transition shadow-lg shadow-purple-500/20">
           <i class="fa-solid fa-wand-magic mr-1"></i> Sinh Dữ Liệu Test Fixture
@@ -388,7 +436,7 @@ As a registered customer, I want to checkout my cart, so that I receive my items
         <!-- Schema Editor -->
         <div class="lg:col-span-5 flex flex-col glass-panel rounded-2xl border border-slate-800/80 overflow-hidden">
           <div class="h-9 bg-slate-900/90 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs font-semibold text-slate-400">
-            <span>OpenAPI Schema Definition (JSON)</span>
+            <span>Schema Properties Definition (JSON)</span>
             <span class="text-[10px] text-purple-400 font-mono">Pydantic / Faker</span>
           </div>
           <div id="monaco-schema-editor" class="flex-1 w-full bg-slate-950"></div>
@@ -431,16 +479,23 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       </div>
     </section>
 
-    <!-- ==================== TAB 5: CI/CD PR BOT ==================== -->
+    <!-- ==================== TAB 5: CI/CD & WEBHOOK HUB ==================== -->
     <section id="panel-prbot" class="tab-panel flex-1 flex flex-col p-5 overflow-hidden space-y-4 hidden">
       <div class="flex items-center justify-between shrink-0">
         <div>
-          <h2 class="text-lg font-bold text-white tracking-tight">GitHub Action PR Impact Analysis Radar</h2>
-          <p class="text-xs text-slate-400">Phân tích chuỗi git diff khi mở Pull Request để đánh giá phạm vi ảnh hưởng các service và tự động đề xuất regression tests.</p>
+          <h2 class="text-lg font-bold text-white tracking-tight">CI/CD PR Impact Radar & GitHub Webhook Receiver</h2>
+          <p class="text-xs text-slate-400">Phân tích chuỗi git diff khi mở Pull Request, liên kết Webhook 2 chiều và tự động bình luận khuyến nghị test regression.</p>
         </div>
-        <button onclick="analyzePR()" class="text-xs px-4 py-2 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold shadow-lg shadow-amber-500/20 transition">
-          <i class="fa-solid fa-radar mr-1"></i> Phân Tích Tác Động PR
-        </button>
+        <div class="flex items-center space-x-2">
+          <button onclick="simulateWebhook()" class="text-xs px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800 transition flex items-center space-x-1.5 font-medium">
+            <i class="fa-solid fa-bolt"></i>
+            <span>Simulate Webhook Event</span>
+          </button>
+          <button onclick="analyzePR()" class="text-xs px-4 py-2 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold shadow-lg shadow-amber-500/20 transition flex items-center space-x-1.5">
+            <i class="fa-solid fa-radar"></i>
+            <span>Phân Tích Tác Động PR</span>
+          </button>
+        </div>
       </div>
 
       <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-0">
@@ -456,7 +511,7 @@ As a registered customer, I want to checkout my cart, so that I receive my items
         <!-- Markdown Preview -->
         <div class="lg:col-span-6 flex flex-col glass-panel rounded-2xl border border-slate-800/80 overflow-hidden">
           <div class="h-9 bg-slate-900/90 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs font-semibold text-slate-400">
-            <span>GitHub PR Comment Preview</span>
+            <span>GitHub PR Comment Preview (Markdown)</span>
             <span class="text-[10px] text-emerald-400 font-mono">Ready to Post</span>
           </div>
           <div id="pr-bot-output" class="flex-1 bg-slate-950 p-4 text-xs text-slate-200 font-mono overflow-y-auto custom-scroll leading-relaxed whitespace-pre-wrap"></div>
@@ -498,6 +553,49 @@ As a registered customer, I want to checkout my cart, so that I receive my items
 - Given giỏ hàng có sản phẩm và tổng tiền > 0 When khách hàng bấm Đặt hàng Then hệ thống xác nhận đơn hàng thành công 200 OK.
 - Given giỏ hàng rỗng When khách hàng bấm Đặt hàng Then hệ thống chặn và hiển thị lỗi 'Giỏ hàng không được để trống'.
 - Given thẻ tín dụng hết hạn hoặc số thẻ không hợp lệ When gửi yêu cầu thanh toán Then hệ thống báo lỗi 400 'Thẻ thanh toán không hợp lệ'.`;
+
+    const SAMPLE_GRAPHQL = `type User {
+  id: ID!
+  email: String!
+  name: String
+}
+
+type Order {
+  id: ID!
+  total: Float!
+  status: String!
+}
+
+type Query {
+  getUser(id: ID!): User
+  listOrders(limit: Int): [Order]!
+}
+
+type Mutation {
+  createOrder(userId: ID!, total: Float!): Order!
+  cancelOrder(orderId: ID!): Boolean!
+}`;
+
+    const SAMPLE_ASYNCAPI = `asyncapi: 2.6.0
+info:
+  title: Order Events Stream
+  version: 1.0.0
+channels:
+  orders/created:
+    publish:
+      summary: Publish order created event
+      message:
+        name: OrderCreatedEvent
+        payload:
+          type: object
+          properties:
+            orderId: { type: string }
+            amount: { type: number }
+  orders/cancelled:
+    subscribe:
+      summary: Listen for cancelled orders
+      message:
+        name: OrderCancelledEvent`;
 
     const SAMPLE_SCHEMA = `{
   "type": "object",
@@ -558,16 +656,17 @@ As a registered customer, I want to checkout my cart, so that I receive my items
               minimap: { enabled: true },
               automaticLayout: true,
               fontSize: 12,
+              lineNumbers: 'on',
               scrollBeyondLastLine: false,
             });
             pomEditor = window.pomEditor;
 
-            // 3. Diff Editor
+            // 3. POM Diff Editor
             window.diffEditor = monaco.editor.createDiffEditor(document.getElementById('monaco-diff-container'), {
               theme: 'vs-dark',
-              automaticLayout: true,
               readOnly: true,
-              fontSize: 11,
+              automaticLayout: true,
+              fontSize: 12,
             });
             diffEditor = window.diffEditor;
 
@@ -579,6 +678,7 @@ As a registered customer, I want to checkout my cart, so that I receive my items
               minimap: { enabled: false },
               automaticLayout: true,
               fontSize: 12,
+              lineNumbers: 'on',
               scrollBeyondLastLine: false,
             });
             schemaEditor = window.schemaEditor;
@@ -591,31 +691,30 @@ As a registered customer, I want to checkout my cart, so that I receive my items
               minimap: { enabled: false },
               automaticLayout: true,
               fontSize: 12,
+              lineNumbers: 'on',
               scrollBeyondLastLine: false,
             });
             gitDiffEditor = window.gitDiffEditor;
 
-            // Trigger initial demo loads once Monaco is mounted
-            generatePOM();
+            // Initialize default tabs
+            loadSamplePRD();
             generateSynthetic();
-          } catch (e) {
-            console.error("Monaco instantiate error:", e);
+            analyzePR();
+            initCytoscape();
+          } catch (editorInitErr) {
+            console.error("Monaco Editor internal mounting error:", editorInitErr);
           }
         });
       } catch (err) {
-        console.error("Monaco require.config error:", err);
+        console.error("Monaco loader error:", err);
       }
     }
 
-    // Launch Monaco and Cytoscape as soon as DOM is interactive
+    // Auto-mount Monaco on window load
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        initMonaco();
-        initCytoscape();
-      });
+      window.addEventListener('DOMContentLoaded', initMonaco);
     } else {
       initMonaco();
-      initCytoscape();
     }
 
     // TAB SWITCHER
@@ -639,13 +738,47 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       if (tabId === 'graph' && window.cyInstance) { window.cyInstance.resize(); window.cyInstance.fit(); }
     }
 
-    // TAB 1 ACTIONS
-    function loadSamplePRD() {
+    // TAB 1 ACTIONS & FORMAT SELECTION
+    function onFormatChange() {
+      const format = document.getElementById('prd-input-format').value;
+      const filenameEl = document.getElementById('spec-filename');
+      const modeBadge = document.getElementById('spec-mode-badge');
+      const iconEl = document.getElementById('spec-icon');
+
+      if (format === 'graphql') {
+        filenameEl.innerText = "schema.graphql (GraphQL SDL)";
+        modeBadge.innerText = "GraphQL Mode";
+        iconEl.className = "fa-solid fa-project-diagram text-pink-400";
+        if (window.prdEditor && monaco) monaco.editor.setModelLanguage(window.prdEditor.getModel(), 'graphql');
+      } else if (format === 'asyncapi') {
+        filenameEl.innerText = "asyncapi.yaml (Kafka / Event Stream)";
+        modeBadge.innerText = "YAML Mode";
+        iconEl.className = "fa-solid fa-bolt text-amber-400";
+        if (window.prdEditor && monaco) monaco.editor.setModelLanguage(window.prdEditor.getModel(), 'yaml');
+      } else {
+        filenameEl.innerText = "Checkout_Feature.md (Input Specification)";
+        modeBadge.innerText = "Markdown Mode";
+        iconEl.className = "fa-brands fa-markdown text-blue-400";
+        if (window.prdEditor && monaco) monaco.editor.setModelLanguage(window.prdEditor.getModel(), 'markdown');
+      }
+      loadCurrentSample();
+    }
+
+    function loadCurrentSample() {
+      const format = document.getElementById('prd-input-format').value;
+      let text = SAMPLE_PRD;
+      if (format === 'graphql') text = SAMPLE_GRAPHQL;
+      if (format === 'asyncapi') text = SAMPLE_ASYNCAPI;
+
       if (window.prdEditor && typeof window.prdEditor.setValue === 'function') {
-        window.prdEditor.setValue(SAMPLE_PRD);
+        window.prdEditor.setValue(text);
       }
       const el = document.getElementById('prd-fallback-textarea');
-      if (el) el.value = SAMPLE_PRD;
+      if (el) el.value = text;
+    }
+
+    function loadSamplePRD() {
+      loadCurrentSample();
     }
 
     function getPRDContent() {
@@ -683,27 +816,56 @@ As a registered customer, I want to checkout my cart, so that I receive my items
 
     async function generateTestCases() {
       const content = getPRDContent();
+      const format = document.getElementById('prd-input-format').value;
       const btn = document.getElementById('btn-generate-tc');
       btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang Phân Tích...`;
       btn.disabled = true;
 
       try {
-        const res = await fetch('/api/v1/qa/generate-test-cases', {
+        let endpoint = '/api/v1/qa/generate-test-cases';
+        let bodyPayload = { prd_content: content, filename: "Feature_PRD.md" };
+
+        if (format === 'graphql') {
+          endpoint = '/api/v1/qa/generate-graphql-tests';
+          bodyPayload = { schema_sdl: content, title: "GraphQL API" };
+        } else if (format === 'asyncapi') {
+          endpoint = '/api/v1/qa/generate-asyncapi-tests';
+          bodyPayload = { spec_content: content };
+        }
+
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prd_content: content, filename: "Feature_PRD.md" })
+          body: JSON.stringify(bodyPayload)
         });
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.detail || `Server trả về mã lỗi HTTP ${res.status}`);
         }
         const data = await res.json();
-        lastTestSuite = data.test_suite;
-        lastRTMMatrix = data.rtm_matrix;
+        
+        let testCases = [];
+        let totalCount = 0;
+        let rtmEntries = [];
+        let covPct = 100.0;
+
+        if (format === 'graphql' || format === 'asyncapi') {
+          lastTestSuite = data;
+          testCases = data.test_cases || [];
+          totalCount = data.total_test_cases || testCases.length;
+          covPct = 100.0;
+        } else {
+          lastTestSuite = data.test_suite;
+          lastRTMMatrix = data.rtm_matrix;
+          testCases = data.test_suite.test_cases || [];
+          totalCount = data.test_suite.total_test_cases || testCases.length;
+          rtmEntries = data.rtm_matrix ? data.rtm_matrix.entries : [];
+          covPct = data.rtm_matrix ? data.rtm_matrix.coverage_percentage : 100.0;
+        }
 
         // Update stats
-        document.getElementById('stat-tc-count').innerText = data.test_suite.total_test_cases;
-        document.getElementById('stat-rtm-cov').innerText = `${data.rtm_matrix.coverage_percentage}%`;
+        document.getElementById('stat-tc-count').innerText = totalCount;
+        document.getElementById('stat-rtm-cov').innerText = `${covPct}%`;
 
         // Enable export buttons
         document.getElementById('btn-dl-excel').classList.remove('opacity-50', 'pointer-events-none');
@@ -712,7 +874,7 @@ As a registered customer, I want to checkout my cart, so that I receive my items
         // Render Test Cases Table
         const tbody = document.getElementById('tc-table-body');
         tbody.innerHTML = '';
-        data.test_suite.test_cases.forEach(tc => {
+        testCases.forEach(tc => {
           let badge = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
           if (tc.category.includes('Boundary')) badge = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
           if (tc.category.includes('Negative')) badge = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
@@ -731,30 +893,34 @@ As a registered customer, I want to checkout my cart, so that I receive my items
 
         // Render RTM Traceability Matrix Table
         const rtmTbody = document.getElementById('rtm-table-body');
-        if (rtmTbody && data.rtm_matrix && data.rtm_matrix.entries) {
+        if (rtmTbody) {
           rtmTbody.innerHTML = '';
-          data.rtm_matrix.entries.forEach(entry => {
-            const tr = document.createElement('tr');
-            tr.className = 'hover:bg-slate-900/60 transition';
-            const tcBadges = entry.covered_test_case_ids.map(id =>
-              `<span class="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300 font-mono border border-blue-500/30 mr-1">${id}</span>`
-            ).join('');
-            const symBadges = (entry.linked_code_symbols || []).map(sym =>
-              `<span class="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300 font-mono border border-purple-500/30 mr-1"><i class="fa-solid fa-code text-[8px] mr-1"></i>${sym}</span>`
-            ).join('');
-            tr.innerHTML = `
-              <td class="py-2.5 font-mono font-bold text-amber-400 whitespace-nowrap">${entry.ac_id}</td>
-              <td class="py-2.5 text-slate-300 font-medium">${entry.user_story_title}</td>
-              <td class="py-2.5 text-slate-200 max-w-md">${entry.ac_description}</td>
-              <td class="py-2.5">${symBadges || '<span class="text-slate-500 text-[10px] italic">Chưa map code</span>'}</td>
-              <td class="py-2.5">${tcBadges || '<span class="text-rose-400 text-[10px]">Chưa gắn test</span>'}</td>
-              <td class="py-2.5 whitespace-nowrap"><span class="px-2 py-0.5 rounded text-[10px] font-semibold border ${entry.is_covered ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}">${entry.is_covered ? '✓ 100% Phủ' : 'Thiếu Test Case'}</span></td>
-            `;
-            rtmTbody.appendChild(tr);
-          });
+          if (rtmEntries && rtmEntries.length > 0) {
+            rtmEntries.forEach(entry => {
+              const tr = document.createElement('tr');
+              tr.className = 'hover:bg-slate-900/60 transition';
+              const tcBadges = entry.covered_test_case_ids.map(id =>
+                `<span class="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300 font-mono border border-blue-500/30 mr-1">${id}</span>`
+              ).join('');
+              const symBadges = (entry.linked_code_symbols || []).map(sym =>
+                `<span class="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300 font-mono border border-purple-500/30 mr-1"><i class="fa-solid fa-code text-[8px] mr-1"></i>${sym}</span>`
+              ).join('');
+              tr.innerHTML = `
+                <td class="py-2.5 font-mono font-bold text-amber-400 whitespace-nowrap">${entry.ac_id}</td>
+                <td class="py-2.5 text-slate-300 font-medium">${entry.user_story_title}</td>
+                <td class="py-2.5 text-slate-200 max-w-md">${entry.ac_description}</td>
+                <td class="py-2.5">${symBadges || '<span class="text-slate-500 text-[10px] italic">Chưa map code</span>'}</td>
+                <td class="py-2.5">${tcBadges || '<span class="text-rose-400 text-[10px]">Chưa gắn test</span>'}</td>
+                <td class="py-2.5 whitespace-nowrap"><span class="px-2 py-0.5 rounded text-[10px] font-semibold border ${entry.is_covered ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}">${entry.is_covered ? '✓ 100% Phủ' : 'Thiếu Test Case'}</span></td>
+              `;
+              rtmTbody.appendChild(tr);
+            });
+          } else {
+            rtmTbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-500">Đã tạo ${totalCount} test case thành công. Ma trận RTM áp dụng cho PRD User Story.</td></tr>`;
+          }
         }
       } catch (err) {
-        alert("Lỗi phân tích PRD: " + (err.message || err));
+        alert("Lỗi phân tích: " + (err.message || err));
       } finally {
         btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-play"></i> <span>Phân Tích & Sinh Test Suite</span>`;
@@ -782,101 +948,162 @@ As a registered customer, I want to checkout my cart, so that I receive my items
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(lastTestSuite)
       });
-      const text = await res.text();
+      const blob = await res.blob();
       const a = document.createElement('a');
-      a.href = window.URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+      a.href = window.URL.createObjectURL(blob);
       a.download = `TestCases_Export.csv`;
       a.click();
     }
 
-    // TAB 2: POM CODEGEN & DIFF HEALER
+    // TAB 2: POM CODEGEN & DIFF HEALER & RESILIENT LOCATOR STUDIO
     async function generatePOM() {
       const lang = document.getElementById('pom-lang-select').value;
-      const res = await fetch('/api/v1/qa/generate-pom-scripts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ feature_name: "User Checkout", language: lang })
+      try {
+        const res = await fetch('/api/v1/qa/generate-pom-scripts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feature_name: "Checkout Order", language: lang })
+        });
+        currentPOMData = await res.json();
+        renderPOMTabs();
+        selectPOMTab(0);
+      } catch (e) {
+        alert("Lỗi sinh code POM: " + e);
+      }
+    }
+
+    function renderPOMTabs() {
+      if (!currentPOMData || !currentPOMData.files) return;
+      const container = document.getElementById('pom-subtabs');
+      container.innerHTML = '';
+      currentPOMData.files.forEach((f, idx) => {
+        const btn = document.createElement('button');
+        btn.onclick = () => selectPOMTab(idx);
+        btn.className = `px-2.5 py-1 rounded-md text-[11px] font-mono transition ${idx === activePOMIdx ? 'bg-blue-600 text-white font-medium' : 'text-slate-400 hover:bg-slate-800'}`;
+        btn.innerText = f.file_path;
+        container.appendChild(btn);
       });
-      currentPOMData = await res.json();
-      selectPOMTab(0);
     }
 
     function selectPOMTab(idx) {
+      if (!currentPOMData || !currentPOMData.files[idx]) return;
       activePOMIdx = idx;
-      if (!currentPOMData || !currentPOMData.files) return;
+      renderPOMTabs();
+      const file = currentPOMData.files[idx];
 
-      const subtabs = document.getElementById('pom-subtabs');
-      subtabs.innerHTML = '';
-      currentPOMData.files.forEach((f, i) => {
-        const btn = document.createElement('button');
-        btn.className = `px-2.5 py-1 rounded-md text-[11px] font-mono transition ${i === idx ? 'bg-blue-600 text-white font-medium' : 'text-slate-400 hover:bg-slate-800'}`;
-        btn.innerText = f.file_path;
-        btn.onclick = () => selectPOMTab(i);
-        subtabs.appendChild(btn);
-      });
-
-      const activeFile = currentPOMData.files[idx];
-      const lang = activeFile.language === 'typescript' ? 'typescript' : 'python';
-
-      if (pomEditor) {
-        monaco.editor.setModelLanguage(pomEditor.getModel(), lang);
-        pomEditor.setValue(activeFile.content);
+      if (isDiffModeActive) {
+        if (diffEditor) {
+          const original = monaco.editor.createModel(file.content + '\n# Original unhealed version', 'python');
+          const modified = monaco.editor.createModel(file.content, 'python');
+          diffEditor.setModel({ original: original, modified: modified });
+        }
+      } else {
+        if (pomEditor) {
+          pomEditor.setValue(file.content);
+          const lang = file.file_path.endsWith('.ts') ? 'typescript' : 'python';
+          monaco.editor.setModelLanguage(pomEditor.getModel(), lang);
+        }
       }
 
-      // Update Diff Editor models
-      if (diffEditor) {
-        const brokenCode = activeFile.content.replace(/def [a-zA-Z0-9_]+\([^)]*\):/g, m => m.replace(':', '')); // simulate missing colon error
-        diffEditor.setModel({
-          original: monaco.editor.createModel(brokenCode, lang),
-          modified: monaco.editor.createModel(activeFile.content, lang)
-        });
+      // Update badge
+      const badge = document.getElementById('ast-badge');
+      if (file.syntax_valid) {
+        badge.className = "px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono";
+        badge.innerHTML = `<i class="fa-solid fa-shield-halved mr-1"></i> AST Verified Valid (${file.healing_attempts || 0} heals)`;
+      } else {
+        badge.className = "px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-mono";
+        badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> Syntax Errors`;
       }
     }
 
     function toggleDiffMode() {
       isDiffModeActive = !isDiffModeActive;
-      const regularContainer = document.getElementById('monaco-pom-container');
+      const pomContainer = document.getElementById('monaco-pom-container');
       const diffContainer = document.getElementById('monaco-diff-container');
       const btnText = document.getElementById('diff-mode-text');
 
       if (isDiffModeActive) {
-        regularContainer.classList.add('hidden');
+        pomContainer.classList.add('hidden');
         diffContainer.classList.remove('hidden');
-        btnText.innerText = "Xem Mã Nguồn Đơn";
+        btnText.innerText = "Tắt Diff Viewer";
         if (diffEditor) diffEditor.layout();
       } else {
+        pomContainer.classList.remove('hidden');
         diffContainer.classList.add('hidden');
-        regularContainer.classList.remove('hidden');
         btnText.innerText = "Bật Split Diff Viewer";
         if (pomEditor) pomEditor.layout();
       }
+      selectPOMTab(activePOMIdx);
     }
 
     function copyCurrentCode() {
       if (pomEditor) {
         navigator.clipboard.writeText(pomEditor.getValue());
-        alert("Đã sao chép code vào clipboard!");
+        alert("Đã sao chép mã nguồn vào bộ nhớ tạm!");
       }
     }
 
-    // LIVE TEST RUNNER
-    async function runLivePlaywrightTest() {
-      const code = pomEditor ? pomEditor.getValue() : "";
-      const btn = document.getElementById('btn-run-live');
-      const terminal = document.getElementById('terminal-output');
-      const statusPill = document.getElementById('runner-status-pill');
+    // RESILIENT LOCATOR SYNTHESIS
+    async function synthesizeLocators() {
+      const tag = document.getElementById('loc-tag').value || 'button';
+      const testid = document.getElementById('loc-testid').value || '';
+      const text = document.getElementById('loc-text').value || '';
 
-      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Running Chromium...`;
-      statusPill.innerText = "STREAMING";
-      statusPill.className = "text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono animate-pulse";
-      terminal.innerHTML = "";
-
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${window.location.host}/api/v1/qa/ws/runner`;
+      const attrs = {};
+      if (testid) attrs['data-testid'] = testid;
+      if (tag === 'button') attrs['role'] = 'button';
 
       try {
+        const res = await fetch('/api/v1/qa/resilient-locators', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ element_tag: tag, attributes: attrs, inner_text: text })
+        });
+        const data = await res.json();
+        const container = document.getElementById('locator-results');
+        container.innerHTML = '';
+
+        data.forEach(item => {
+          const div = document.createElement('div');
+          div.className = 'p-2 rounded bg-slate-900 border border-slate-800 text-[11px] flex items-center justify-between';
+          div.innerHTML = `
+            <div>
+              <div class="flex items-center space-x-1.5 mb-1">
+                <span class="px-1.5 py-0.2 rounded text-[9px] font-bold ${item.priority_level <= 2 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}">Priority ${item.priority_level} (${item.locator_type.toUpperCase()})</span>
+                <span class="text-slate-400 text-[10px]">${item.explanation}</span>
+              </div>
+              <code class="text-cyan-300 font-mono text-[10px]">${item.locator_code}</code>
+            </div>
+            <button onclick="navigator.clipboard.writeText('${item.locator_code.replace(/'/g, "\\'")}'); alert('Đã sao chép locator!');" class="text-slate-500 hover:text-white p-1">
+              <i class="fa-regular fa-copy"></i>
+            </button>
+          `;
+          container.appendChild(div);
+        });
+      } catch (e) {
+        alert("Lỗi tính toán locators: " + e);
+      }
+    }
+
+    // WEBSOCKET & TEST RUNNER
+    async function runLivePlaywrightTest() {
+      const terminal = document.getElementById('terminal-output');
+      const statusPill = document.getElementById('runner-status-pill');
+      const btn = document.getElementById('btn-run-live');
+      
+      terminal.innerHTML = '<span class="text-blue-400">[INFO] Khởi động Isolated Sandbox Runner...</span>';
+      statusPill.innerText = "RUNNING";
+      statusPill.className = "text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono animate-pulse";
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Running...`;
+
+      const code = pomEditor ? pomEditor.getValue() : "from playwright.sync_api import Page\ndef test_dummy(): pass";
+
+      try {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/api/v1/qa/ws/runner`;
         const ws = new WebSocket(wsUrl);
-        let logs = [];
+        const logs = [];
+
         ws.onopen = () => {
           ws.send(JSON.stringify({ code: code, framework: "playwright" }));
         };
@@ -908,7 +1135,7 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       }
     }
 
-    // TAB 3: CYTOSCAPE GRAPH & CODEBASE
+    // TAB 3: CYTOSCAPE GRAPH, GRAPHRAG & TAINT ANALYSIS
     async function initCytoscape() {
       const container = document.getElementById('cy');
       if (!container) return;
@@ -926,64 +1153,64 @@ As a registered customer, I want to checkout my cart, so that I receive my items
         window.cyInstance = cyLib({
           container: container,
           elements: data.elements,
-        style: [
-          {
-            selector: 'node',
-            style: {
-              'label': 'data(label)',
-              'color': '#f8fafc',
-              'font-size': '11px',
-              'font-family': 'JetBrains Mono',
-              'background-color': '#2563eb',
-              'border-width': 2,
-              'border-color': '#60a5fa',
-              'width': 44,
-              'height': 44,
-              'text-valign': 'bottom',
-              'text-margin-y': 6,
+          style: [
+            {
+              selector: 'node',
+              style: {
+                'label': 'data(label)',
+                'color': '#f8fafc',
+                'font-size': '11px',
+                'font-family': 'JetBrains Mono',
+                'background-color': '#2563eb',
+                'border-width': 2,
+                'border-color': '#60a5fa',
+                'width': 44,
+                'height': 44,
+                'text-valign': 'bottom',
+                'text-margin-y': 6,
+              }
+            },
+            {
+              selector: 'node[type="controller"]',
+              style: { 'background-color': '#2563eb', 'border-color': '#93c5fd' }
+            },
+            {
+              selector: 'node[type="service"]',
+              style: { 'background-color': '#0d9488', 'border-color': '#5eead4' }
+            },
+            {
+              selector: 'node[type="repo"]',
+              style: { 'background-color': '#059669', 'border-color': '#6ee7b7' }
+            },
+            {
+              selector: 'edge',
+              style: {
+                'width': 2,
+                'line-color': '#475569',
+                'target-arrow-color': '#94a3b8',
+                'target-arrow-shape': 'triangle',
+                'curve-style': 'bezier',
+                'label': 'data(label)',
+                'font-size': '9px',
+                'color': '#94a3b8',
+                'text-background-opacity': 0.8,
+                'text-background-color': '#0f172a',
+                'text-background-padding': 2,
+              }
             }
-          },
-          {
-            selector: 'node[type="controller"]',
-            style: { 'background-color': '#2563eb', 'border-color': '#93c5fd' }
-          },
-          {
-            selector: 'node[type="service"]',
-            style: { 'background-color': '#0d9488', 'border-color': '#5eead4' }
-          },
-          {
-            selector: 'node[type="repo"]',
-            style: { 'background-color': '#059669', 'border-color': '#6ee7b7' }
-          },
-          {
-            selector: 'edge',
-            style: {
-              'width': 2,
-              'line-color': '#475569',
-              'target-arrow-color': '#94a3b8',
-              'target-arrow-shape': 'triangle',
-              'curve-style': 'bezier',
-              'label': 'data(label)',
-              'font-size': '9px',
-              'color': '#94a3b8',
-              'text-background-opacity': 0.8,
-              'text-background-color': '#0f172a',
-              'text-background-padding': 2,
-            }
+          ],
+          layout: {
+            name: 'breadthfirst',
+            directed: true,
+            padding: 30,
+            spacingFactor: 1.25
           }
-        ],
-        layout: {
-          name: 'breadthfirst',
-          directed: true,
-          padding: 30,
-          spacingFactor: 1.25
-        }
-      });
-      cyInstance = window.cyInstance;
-    } catch (e) {
-      console.error("Cytoscape init error:", e);
+        });
+        cyInstance = window.cyInstance;
+      } catch (e) {
+        console.error("Cytoscape init error:", e);
+      }
     }
-  }
 
     async function importGitHubRepo() {
       const url = document.getElementById('github-url-input').value;
@@ -1002,7 +1229,66 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       } catch (e) {
         alert("Lỗi import: " + e);
       } finally {
-        btn.innerHTML = `<i class="fa-solid fa-download mr-1"></i> Import & Index`;
+        btn.innerHTML = `<i class="fa-solid fa-download mr-1"></i> Index Repo`;
+      }
+    }
+
+    async function traceGraphImpact() {
+      const symbol = document.getElementById('impact-symbol-input').value || 'OrderService';
+      try {
+        const res = await fetch('/api/v1/codebase/impact-trace', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol_name: symbol })
+        });
+        const data = await res.json();
+        
+        let pathStr = data.traversal_path && data.traversal_path.length > 0 ? data.traversal_path.join(' ➔ ') : 'Direct component scope';
+        let explanation = `🔍 GraphRAG Impact Radar cho Symbol: '${data.origin_symbol}'\n` +
+          `• Vùng ảnh hưởng trực tiếp (Services): ${data.impacted_services.join(', ') || 'None'}\n` +
+          `• Endpoints bị tác động: ${data.impacted_endpoints.join(', ') || 'None'}\n` +
+          `• Yêu cầu PRD liên đới: ${data.impacted_requirements.join(', ') || 'None'}\n` +
+          `• Kịch bản Regression Test: ${data.impacted_test_cases.join(', ') || 'Tự động kiểm tra test suite tương ứng'}\n` +
+          `• Đường dẫn duyệt đồ thị: ${pathStr}`;
+
+        document.getElementById('arch-explanation').innerText = explanation;
+      } catch (e) {
+        alert("Lỗi GraphRAG Impact: " + e);
+      }
+    }
+
+    async function loadTaintFlow() {
+      try {
+        const res = await fetch('/api/v1/codebase/taint-flow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entry_endpoint: "OrderController" })
+        });
+        const steps = await res.json();
+        const container = document.getElementById('taint-steps-target');
+        container.innerHTML = '';
+
+        steps.forEach(s => {
+          const div = document.createElement('div');
+          div.className = 'p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-start space-x-3';
+          div.innerHTML = `
+            <div class="w-6 h-6 rounded-full bg-blue-600/30 text-blue-400 border border-blue-500/40 flex items-center justify-center font-bold text-xs shrink-0">${s.step_number}</div>
+            <div class="flex-1">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-white font-semibold text-xs">${s.component}</span>
+                <span class="text-[10px] text-cyan-400 bg-cyan-950 px-1.5 py-0.5 rounded">${s.component_type}</span>
+              </div>
+              <p class="text-slate-400 text-[11px] mb-1.5">${s.action}</p>
+              <div class="flex items-center space-x-1">
+                <span class="text-[10px] text-amber-400"><i class="fa-solid fa-biohazard mr-1"></i>Tainted Data:</span>
+                ${s.tainted_fields.map(f => `<span class="px-1 py-0.2 bg-amber-950 text-amber-300 rounded text-[9px] border border-amber-800/40">${f}</span>`).join(' ')}
+              </div>
+            </div>
+          `;
+          container.appendChild(div);
+        });
+      } catch (e) {
+        console.error("Taint flow error:", e);
       }
     }
 
@@ -1020,7 +1306,7 @@ As a registered customer, I want to checkout my cart, so that I receive my items
         const data = await res.json();
         document.getElementById('arch-explanation').innerText = data.detailed_explanation;
 
-        // Render Mermaid Robust (handles v9 string/callback and v10+ object return)
+        // Render Mermaid Robust
         const target = document.getElementById('mermaid-flow-target');
         target.innerHTML = '';
         
@@ -1047,7 +1333,6 @@ As a registered customer, I want to checkout my cart, so that I receive my items
           if (svgCode) {
             target.innerHTML = svgCode;
           } else {
-            // Direct declarative mermaid element rendering
             target.innerHTML = `<div class="mermaid">${data.mermaid_diagram}</div>`;
             if (typeof mermaid !== 'undefined' && typeof mermaid.init === 'function') {
               mermaid.init(undefined, target.querySelectorAll('.mermaid'));
@@ -1068,17 +1353,31 @@ As a registered customer, I want to checkout my cart, so that I receive my items
     }
 
     function switchGraphMode(mode) {
+      const cyWrapper = document.getElementById('cy-wrapper');
+      const mermaidWrapper = document.getElementById('mermaid-flow-wrapper');
+      const taintWrapper = document.getElementById('taint-flow-wrapper');
+      const btnNet = document.getElementById('btn-graph-net');
+      const btnSeq = document.getElementById('btn-graph-seq');
+      const btnTaint = document.getElementById('btn-graph-taint');
+
+      cyWrapper.classList.add('hidden');
+      mermaidWrapper.classList.add('hidden');
+      taintWrapper.classList.add('hidden');
+      btnNet.className = "text-slate-400 hover:text-slate-200";
+      btnSeq.className = "text-slate-400 hover:text-slate-200";
+      btnTaint.className = "text-slate-400 hover:text-slate-200";
+
       if (mode === 'network') {
-        document.getElementById('cy-wrapper').classList.remove('hidden');
-        document.getElementById('mermaid-flow-wrapper').classList.add('hidden');
-        document.getElementById('btn-graph-net').className = "font-semibold text-blue-400";
-        document.getElementById('btn-graph-seq').className = "text-slate-400 hover:text-slate-200";
-      } else {
-        document.getElementById('cy-wrapper').classList.add('hidden');
-        document.getElementById('mermaid-flow-wrapper').classList.remove('hidden');
-        document.getElementById('btn-graph-net').className = "text-slate-400 hover:text-slate-200";
-        document.getElementById('btn-graph-seq').className = "font-semibold text-blue-400";
+        cyWrapper.classList.remove('hidden');
+        btnNet.className = "font-semibold text-blue-400";
+      } else if (mode === 'sequence') {
+        mermaidWrapper.classList.remove('hidden');
+        btnSeq.className = "font-semibold text-blue-400";
         askArchitecture();
+      } else if (mode === 'taint') {
+        taintWrapper.classList.remove('hidden');
+        btnTaint.className = "font-semibold text-blue-400";
+        loadTaintFlow();
       }
     }
 
@@ -1109,7 +1408,7 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       alert("Đã sao chép payload!");
     }
 
-    // TAB 5: PR BOT
+    // TAB 5: PR BOT & WEBHOOK SIMULATOR
     async function analyzePR() {
       const diff = gitDiffEditor ? gitDiffEditor.getValue() : SAMPLE_DIFF;
       try {
@@ -1122,6 +1421,35 @@ As a registered customer, I want to checkout my cart, so that I receive my items
         document.getElementById('pr-bot-output').innerText = data.markdown_comment;
       } catch (e) {
         alert("Lỗi: " + e);
+      }
+    }
+
+    async function simulateWebhook() {
+      const diff = gitDiffEditor ? gitDiffEditor.getValue() : SAMPLE_DIFF;
+      try {
+        const res = await fetch('/api/v1/webhook/github', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-GitHub-Event': 'pull_request'
+          },
+          body: JSON.stringify({
+            action: 'opened',
+            number: 108,
+            pull_request: {
+              number: 108,
+              title: "feat(security): enforce cryptographic transaction tokens",
+              diff: diff
+            }
+          })
+        });
+        const data = await res.json();
+        document.getElementById('pr-bot-output').innerText = `[WEBHOOK EVENT: 200 OK]\n` +
+          `Status: ${data.status}\n` +
+          `Files Impacted: ${data.total_files_changed}\n\n` +
+          data.markdown_comment;
+      } catch (e) {
+        alert("Lỗi webhook simulator: " + e);
       }
     }
   </script>
