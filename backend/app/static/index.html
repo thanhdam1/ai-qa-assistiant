@@ -215,13 +215,14 @@ As a registered customer, I want to checkout my cart, so that I receive my items
                   <th class="pb-2 font-semibold">Yêu Cầu (AC ID)</th>
                   <th class="pb-2 font-semibold">User Story</th>
                   <th class="pb-2 font-semibold">Tiêu Chí Chấp Nhận (Gherkin/Spec)</th>
-                  <th class="pb-2 font-semibold">Test Cases Liên Kết (RTM)</th>
+                  <th class="pb-2 font-semibold">Code AST Symbols</th>
+                  <th class="pb-2 font-semibold">Test Cases (RTM)</th>
                   <th class="pb-2 font-semibold">Độ Phủ</th>
                 </tr>
               </thead>
               <tbody id="rtm-table-body" class="divide-y divide-slate-800/60 text-slate-300">
                 <tr>
-                  <td colspan="5" class="py-16 text-center text-slate-500">
+                  <td colspan="6" class="py-16 text-center text-slate-500">
                     <i class="fa-solid fa-table-cells text-2xl mb-2 block"></i>
                     Bấm nút "Phân Tích & Sinh Test Suite" để xây dựng ma trận RTM và phân tích Gap Coverage.
                   </td>
@@ -738,10 +739,14 @@ As a registered customer, I want to checkout my cart, so that I receive my items
             const tcBadges = entry.covered_test_case_ids.map(id =>
               `<span class="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300 font-mono border border-blue-500/30 mr-1">${id}</span>`
             ).join('');
+            const symBadges = (entry.linked_code_symbols || []).map(sym =>
+              `<span class="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300 font-mono border border-purple-500/30 mr-1"><i class="fa-solid fa-code text-[8px] mr-1"></i>${sym}</span>`
+            ).join('');
             tr.innerHTML = `
               <td class="py-2.5 font-mono font-bold text-amber-400 whitespace-nowrap">${entry.ac_id}</td>
               <td class="py-2.5 text-slate-300 font-medium">${entry.user_story_title}</td>
               <td class="py-2.5 text-slate-200 max-w-md">${entry.ac_description}</td>
+              <td class="py-2.5">${symBadges || '<span class="text-slate-500 text-[10px] italic">Chưa map code</span>'}</td>
               <td class="py-2.5">${tcBadges || '<span class="text-rose-400 text-[10px]">Chưa gắn test</span>'}</td>
               <td class="py-2.5 whitespace-nowrap"><span class="px-2 py-0.5 rounded text-[10px] font-semibold border ${entry.is_covered ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}">${entry.is_covered ? '✓ 100% Phủ' : 'Thiếu Test Case'}</span></td>
             `;

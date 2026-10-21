@@ -109,3 +109,14 @@ def test_codebase_qa_api_endpoints():
     # Symbols API
     symbols = list_symbols()
     assert symbols["total_chunks"] >= 2
+
+def test_link_requirements_to_code():
+    agent = CodebaseArchitectureAgent()
+    files = [
+        {"file_path": "Controllers/OrderController.cs", "content": CONTROLLER_CODE},
+        {"file_path": "Services/OrderService.cs", "content": SERVICE_CODE},
+    ]
+    agent.index_files(files)
+    links = agent.link_requirements_to_code("Checkout and process payment", top_k=2)
+    assert len(links) >= 1
+    assert any("Checkout" in l.get("name", "") or "ProcessPaymentAsync" in l.get("name", "") for l in links)

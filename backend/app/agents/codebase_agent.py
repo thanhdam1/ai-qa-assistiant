@@ -52,6 +52,20 @@ class CodebaseArchitectureAgent:
         if all_chunks:
             self.retriever.index_documents(all_chunks, text_field="content")
 
+    def link_requirements_to_code(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+        """
+        Links a functional requirement / User Story query to concrete code symbols
+        using Hybrid Vector + BM25 search and call graph expansion.
+        """
+        if not self.indexed_chunks:
+            return []
+        try:
+            candidates = self.retriever.search(query, top_k=top_k * 2)
+            reranked = CrossEncoderReranker.rerank(query, candidates, top_n=top_k)
+            return self._expand_call_graph(reranked, max_depth=1)
+        except Exception:
+            return []
+
     def answer_architecture_query(self, query: str, top_k: int = 5) -> ArchitectureAnswer:
         """
         Retrieves relevant components using Hybrid Search, expands call-graph,

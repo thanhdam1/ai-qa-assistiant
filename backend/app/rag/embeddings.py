@@ -41,7 +41,11 @@ class EmbeddingService:
         Generates a 1536-dimensional normalized vector deterministically from text tokens.
         Allows full end-to-end vector indexing and testing without requiring cloud API keys.
         """
-        words = text.lower().split()
+        try:
+            from app.rag.bm25_indexer import CodeAwareTokenizer
+            words = CodeAwareTokenizer.tokenize(text)
+        except Exception:
+            words = text.lower().split()
         vector = np.zeros(cls.DIMENSION, dtype=np.float32)
         
         if not words:

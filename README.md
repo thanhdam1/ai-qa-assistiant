@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/FastAPI-0.111.0-009688.svg" alt="FastAPI"/>
   <img src="https://img.shields.io/badge/Tree--sitter-Polyglot_AST-orange.svg" alt="Tree-sitter"/>
   <img src="https://img.shields.io/badge/Vector_DB-Qdrant-red.svg" alt="Qdrant"/>
-  <img src="https://img.shields.io/badge/Tests-23%2F23%20Passed-brightgreen.svg" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Tests-28%2F28%20Passed-brightgreen.svg" alt="Tests"/>
   <img src="https://img.shields.io/badge/License-MIT-purple.svg" alt="License"/>
 </p>
 
@@ -127,7 +127,7 @@ API Documentation & Interactive Swagger UI available at: `http://localhost:8000/
 
 ### 4. Run Automated Test Suite
 ```bash
-# Run all 23 unit & integration tests
+# Run all 28 unit & integration tests
 pytest backend/tests/ -v
 ```
 

@@ -11,6 +11,7 @@ class RTMEntry(BaseModel):
     covered_test_case_ids: List[str] = Field(default_factory=list)
     is_covered: bool
     gap_notes: Optional[str] = None
+    linked_code_symbols: List[str] = Field(default_factory=list)
 
 class RTMMatrix(BaseModel):
     feature_title: str
@@ -27,7 +28,7 @@ class RTMAgent:
     """
 
     @classmethod
-    def build_matrix(cls, prd: ParsedPRD, test_suite: TestSuite) -> RTMMatrix:
+    def build_matrix(cls, prd: ParsedPRD, test_suite: TestSuite, codebase_agent: Optional[Any] = None) -> RTMMatrix:
         entries: List[RTMEntry] = []
         uncovered: List[str] = []
         total_ac = 0
@@ -60,6 +61,17 @@ class RTMAgent:
                     gap_note = f"Warning: No test cases found covering {ac.id} ({ac.description[:40]}...)"
                     uncovered.append(f"{us.id}/{ac.id}: {ac.description}")
 
+                linked_symbols: List[str] = []
+                if codebase_agent:
+                    try:
+                        matches = codebase_agent.link_requirements_to_code(f"{us.title} {ac.description}", top_k=2)
+                        for m in matches:
+                            sym_name = m.get("name")
+                            if sym_name and sym_name not in linked_symbols:
+                                linked_symbols.append(sym_name)
+                    except Exception:
+                        pass
+
                 entries.append(
                     RTMEntry(
                         user_story_id=us.id,
@@ -68,7 +80,8 @@ class RTMAgent:
                         ac_description=ac.description,
                         covered_test_case_ids=matched_tcs,
                         is_covered=is_cov,
-                        gap_notes=gap_note
+                        gap_notes=gap_note,
+                        linked_code_symbols=linked_symbols
                     )
                 )
 
