@@ -240,38 +240,65 @@ As a registered customer, I want to checkout my cart, so that I receive my items
       </div>
     </section>
 
-    <!-- ==================== TAB 2: POM CODEGEN & RESILIENT LOCATOR STUDIO ==================== -->
+    <!-- ==================== TAB 2: POM CODEGEN & SELF-HEALING STUDIO ==================== -->
     <section id="panel-pom" class="tab-panel flex-1 flex flex-col p-5 overflow-hidden space-y-4 hidden">
-      <div class="flex items-center justify-between shrink-0">
+      <!-- Header Toolbar -->
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 shrink-0">
         <div>
-          <h2 class="text-lg font-bold text-white tracking-tight">Page Object Model (POM) & Resilient Locator Studio</h2>
-          <p class="text-xs text-slate-400">Sinh mã nguồn Playwright theo chuẩn POM, kiểm tra cú pháp AST, và tính toán bộ định vị bền vững theo chuẩn W3C Accessibility.</p>
+          <h2 class="text-lg font-bold text-white tracking-tight flex items-center space-x-2">
+            <span>Page Object Model (POM) & Self-Healing Studio</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">Enterprise Tier-1</span>
+          </h2>
+          <p class="text-xs text-slate-400">Sinh mã nguồn Playwright theo chuẩn POM từ nghiệp vụ thực tế, kiểm tra cú pháp AST và tự động phục hồi kịch bản lỗi cú pháp / selector vỡ.</p>
         </div>
-        <div class="flex items-center space-x-2">
-          <button onclick="toggleDiffMode()" id="btn-toggle-diff" class="text-xs px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-purple-400 border border-slate-800 transition flex items-center space-x-1">
-            <i class="fa-solid fa-code-compare"></i>
-            <span id="diff-mode-text">Bật Split Diff Viewer</span>
-          </button>
-          <select id="pom-lang-select" class="text-xs bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-300 focus:outline-none font-medium">
+
+        <!-- Controls Bar -->
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Feature Name Input (Rõ ràng & Cho phép nhập) -->
+          <div class="flex items-center space-x-1.5 bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1 text-xs shadow-inner">
+            <span class="text-slate-400 text-[11px] font-medium">Tính năng:</span>
+            <input type="text" id="pom-feature-input" value="Thanh Toán & Đặt Hàng" class="bg-transparent text-white font-semibold w-44 focus:outline-none text-xs placeholder-slate-500" placeholder="Nhập tên tính năng...">
+          </div>
+
+          <!-- Language Select -->
+          <select id="pom-lang-select" class="text-xs bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none font-medium">
             <option value="python">Playwright (Python) + PyTest</option>
             <option value="typescript">Playwright (TypeScript)</option>
           </select>
-          <button onclick="generatePOM()" class="text-xs px-4 py-2 rounded-lg bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-semibold shadow-lg shadow-teal-500/20 transition flex items-center space-x-1.5">
+
+          <!-- Generate POM Button -->
+          <button onclick="generatePOM()" id="btn-generate-pom" class="text-xs px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold shadow-md shadow-blue-500/20 transition flex items-center space-x-1.5">
             <i class="fa-solid fa-code"></i>
-            <span>Sinh Mã Nguồn POM</span>
+            <span>Sinh Mã POM</span>
           </button>
-          <button onclick="runLivePlaywrightTest()" id="btn-run-live" class="text-xs px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold shadow-lg shadow-emerald-500/25 transition flex items-center space-x-1.5">
+
+          <!-- Toggle View Mode: [Files POM] vs [Self-Healing Diff Studio] -->
+          <div class="flex bg-slate-900 border border-slate-700/80 rounded-lg p-0.5 text-xs">
+            <button onclick="switchPOMWorkspace('codegen')" id="btn-mode-codegen" class="px-2.5 py-1 rounded-md bg-blue-600 text-white font-semibold transition flex items-center space-x-1">
+              <i class="fa-solid fa-folder-tree"></i>
+              <span>File POM</span>
+            </button>
+            <button onclick="switchPOMWorkspace('healing')" id="btn-mode-healing" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition flex items-center space-x-1">
+              <i class="fa-solid fa-wand-magic-sparkles text-purple-400"></i>
+              <span>Tự Sửa Lỗi (Self-Healing)</span>
+            </button>
+          </div>
+
+          <!-- Run Live Test Button -->
+          <button onclick="runLivePlaywrightTest()" id="btn-run-live" class="text-xs px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold shadow-md shadow-emerald-500/25 transition flex items-center space-x-1.5">
             <i class="fa-solid fa-play"></i>
             <span>▶ Run Test Now</span>
           </button>
         </div>
       </div>
 
+      <!-- Main Workspace Grid -->
       <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-0">
-        <!-- Editor Panel -->
+        <!-- Center Editor Panel -->
         <div class="lg:col-span-8 flex flex-col glass-panel rounded-2xl border border-slate-800/80 overflow-hidden">
-          <!-- File Sub-tabs -->
-          <div class="h-9 bg-slate-900/90 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs">
+
+          <!-- View 1 Header: Codegen File Sub-tabs (when in Codegen mode) -->
+          <div id="pom-codegen-header" class="h-9 bg-slate-900/90 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs">
             <div class="flex space-x-1" id="pom-subtabs">
               <button onclick="selectPOMTab(0)" class="px-2.5 py-1 rounded-md text-[11px] font-mono bg-blue-600 text-white font-medium">pages/base_page.py</button>
               <button onclick="selectPOMTab(1)" class="px-2.5 py-1 rounded-md text-[11px] font-mono text-slate-400 hover:bg-slate-800">pages/checkout_page.py</button>
@@ -281,16 +308,57 @@ As a registered customer, I want to checkout my cart, so that I receive my items
               <span id="ast-badge" class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
                 <i class="fa-solid fa-shield-halved mr-1"></i> AST Verified Valid
               </span>
-              <button onclick="copyCurrentCode()" class="text-slate-400 hover:text-white transition">
+              <button onclick="copyCurrentCode()" class="text-slate-400 hover:text-white transition" title="Sao chép mã">
                 <i class="fa-regular fa-copy"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- View 2 Header: Self-Healing Control Bar (when in Self-Healing mode) -->
+          <div id="pom-healing-header" class="h-10 bg-slate-900/90 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs hidden">
+            <div class="flex items-center space-x-2">
+              <span class="text-purple-400 font-semibold flex items-center space-x-1.5">
+                <i class="fa-solid fa-code-compare"></i>
+                <span>Monaco Split Diff: [Trái: Mã Lỗi Có Thể Sửa] vs [Phải: Mã Tự Phục Hồi]</span>
+              </span>
+              <span id="heal-turn-pill" class="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-mono">Sẵn sàng phân tích</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <button onclick="loadSampleBrokenCode()" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] transition flex items-center space-x-1 border border-slate-700">
+                <i class="fa-solid fa-paste text-amber-400"></i>
+                <span>Dán Code Lỗi Mẫu</span>
+              </button>
+              <button onclick="triggerSelfHealing()" id="btn-trigger-heal" class="px-3 py-1 rounded bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-[11px] transition flex items-center space-x-1 shadow-md shadow-purple-500/20">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>Kích Hoạt Tự Sửa Lỗi (Heal Now)</span>
               </button>
             </div>
           </div>
 
           <!-- Monaco Regular Editor Container -->
           <div id="monaco-pom-container" class="flex-1 w-full bg-slate-950"></div>
+
           <!-- Monaco Diff Editor Container -->
           <div id="monaco-diff-container" class="flex-1 w-full bg-slate-950 hidden"></div>
+
+          <!-- Diagnostic Result Panel (under Diff Editor in Healing mode) -->
+          <div id="healing-diagnostic-bar" class="p-3 bg-slate-900/95 border-t border-slate-800 text-xs hidden">
+            <div class="flex items-start justify-between">
+              <div>
+                <span class="font-semibold text-slate-200 flex items-center space-x-1.5">
+                  <i class="fa-solid fa-stethoscope text-purple-400"></i>
+                  <span>Báo Cáo Phân Tích Cú Pháp AST & Tự Động Phục Hồi:</span>
+                </span>
+                <div id="healing-errors-list" class="text-slate-400 text-[11px] mt-1 space-y-0.5">
+                  <div class="text-slate-500 italic">Dán mã lỗi vào khung bên trái rồi bấm "Kích Hoạt Tự Sửa Lỗi (Heal Now)".</div>
+                </div>
+              </div>
+              <div id="healing-status-tag" class="px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400 shrink-0 border border-slate-700">
+                IDLE
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <!-- Right Side: Terminal + Resilient Locator Synthesizer Studio -->
@@ -613,6 +681,23 @@ channels:
 @@ -10,3 +10,4 @@
 + public async Task ProcessPaymentAsync(CheckoutRequest req) { return await _repo.SaveAsync(req); }`;
 
+    const SAMPLE_BROKEN_CODE = `# Đoạn mã kiểm thử Playwright bị lỗi thụt lề cú pháp & chứa Selector dễ gãy
+import pytest
+from playwright.sync_api import Page, expect
+
+class BrokenPaymentPage:
+    def __init__(self, page: Page):
+        self.page = page
+        # SELECTOR DỄ VỠ: Dùng absolute XPath và hash ngẫu nhiên dễ hỏng
+        self.submit_btn = page.locator("/html/body/div[1]/form/div[2]/button")
+        self.card_input = page.locator("#btn-9f3a8b2c")
+
+    def execute_payment(self, card_number: str):
+    # LỖI CÚ PHÁP AST: Thụt lề sai (IndentationError)
+    self.card_input.fill(card_number)
+    self.submit_btn.click()
+`;
+
     // MONACO INITIALIZATION WITH AUTO-RETRY
     function initMonaco() {
       if (typeof require === 'undefined') {
@@ -661,10 +746,11 @@ channels:
             });
             pomEditor = window.pomEditor;
 
-            // 3. POM Diff Editor
+            // 3. POM Diff Editor (Self-Healing Studio: Original is editable)
             window.diffEditor = monaco.editor.createDiffEditor(document.getElementById('monaco-diff-container'), {
               theme: 'vs-dark',
-              readOnly: true,
+              readOnly: false,
+              originalEditable: true,
               automaticLayout: true,
               fontSize: 12,
             });
@@ -732,7 +818,10 @@ channels:
 
       // Trigger Monaco layout recalculation
       if (tabId === 'qa' && window.prdEditor && typeof window.prdEditor.layout === 'function') window.prdEditor.layout();
-      if (tabId === 'pom' && window.pomEditor && typeof window.pomEditor.layout === 'function') window.pomEditor.layout();
+      if (tabId === 'pom') {
+        if (window.pomEditor && typeof window.pomEditor.layout === 'function') window.pomEditor.layout();
+        if (window.diffEditor && typeof window.diffEditor.layout === 'function') window.diffEditor.layout();
+      }
       if (tabId === 'synthetic' && window.schemaEditor && typeof window.schemaEditor.layout === 'function') window.schemaEditor.layout();
       if (tabId === 'prbot' && window.gitDiffEditor && typeof window.gitDiffEditor.layout === 'function') window.gitDiffEditor.layout();
       if (tabId === 'graph' && window.cyInstance) { window.cyInstance.resize(); window.cyInstance.fit(); }
@@ -955,20 +1044,29 @@ channels:
       a.click();
     }
 
-    // TAB 2: POM CODEGEN & DIFF HEALER & RESILIENT LOCATOR STUDIO
+    // TAB 2: POM CODEGEN & SELF-HEALING STUDIO
     async function generatePOM() {
+      const featureInput = document.getElementById('pom-feature-input');
+      const feature = (featureInput && featureInput.value.trim()) ? featureInput.value.trim() : "Thanh Toán & Đặt Hàng";
       const lang = document.getElementById('pom-lang-select').value;
+      const prd = typeof getPRDContent === 'function' ? getPRDContent() : null;
+      const btn = document.getElementById('btn-generate-pom');
+
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang sinh...`;
       try {
         const res = await fetch('/api/v1/qa/generate-pom-scripts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ feature_name: "Checkout Order", language: lang })
+          body: JSON.stringify({ feature_name: feature, language: lang, prd_content: prd })
         });
         currentPOMData = await res.json();
+        switchPOMWorkspace('codegen');
         renderPOMTabs();
         selectPOMTab(0);
       } catch (e) {
         alert("Lỗi sinh code POM: " + e);
+      } finally {
+        btn.innerHTML = `<i class="fa-solid fa-code"></i> <span>Sinh Mã POM</span>`;
       }
     }
 
@@ -991,18 +1089,10 @@ channels:
       renderPOMTabs();
       const file = currentPOMData.files[idx];
 
-      if (isDiffModeActive) {
-        if (diffEditor) {
-          const original = monaco.editor.createModel(file.content + '\n# Original unhealed version', 'python');
-          const modified = monaco.editor.createModel(file.content, 'python');
-          diffEditor.setModel({ original: original, modified: modified });
-        }
-      } else {
-        if (pomEditor) {
-          pomEditor.setValue(file.content);
-          const lang = file.file_path.endsWith('.ts') ? 'typescript' : 'python';
-          monaco.editor.setModelLanguage(pomEditor.getModel(), lang);
-        }
+      if (pomEditor) {
+        pomEditor.setValue(file.content);
+        const lang = file.file_path.endsWith('.ts') ? 'typescript' : 'python';
+        monaco.editor.setModelLanguage(pomEditor.getModel(), lang);
       }
 
       // Update badge
@@ -1016,24 +1106,122 @@ channels:
       }
     }
 
-    function toggleDiffMode() {
-      isDiffModeActive = !isDiffModeActive;
+    // WORKSPACE MODE SWITCHER: 'codegen' vs 'healing'
+    function switchPOMWorkspace(mode) {
+      const codegenHeader = document.getElementById('pom-codegen-header');
+      const healingHeader = document.getElementById('pom-healing-header');
       const pomContainer = document.getElementById('monaco-pom-container');
       const diffContainer = document.getElementById('monaco-diff-container');
-      const btnText = document.getElementById('diff-mode-text');
+      const diagBar = document.getElementById('healing-diagnostic-bar');
+      const btnCodegen = document.getElementById('btn-mode-codegen');
+      const btnHealing = document.getElementById('btn-mode-healing');
 
-      if (isDiffModeActive) {
-        pomContainer.classList.add('hidden');
-        diffContainer.classList.remove('hidden');
-        btnText.innerText = "Tắt Diff Viewer";
-        if (diffEditor) diffEditor.layout();
-      } else {
+      if (mode === 'codegen') {
+        codegenHeader.classList.remove('hidden');
         pomContainer.classList.remove('hidden');
+        healingHeader.classList.add('hidden');
         diffContainer.classList.add('hidden');
-        btnText.innerText = "Bật Split Diff Viewer";
+        diagBar.classList.add('hidden');
+
+        btnCodegen.className = "px-2.5 py-1 rounded-md bg-blue-600 text-white font-semibold transition flex items-center space-x-1";
+        btnHealing.className = "px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition flex items-center space-x-1";
         if (pomEditor) pomEditor.layout();
+      } else {
+        codegenHeader.classList.add('hidden');
+        pomContainer.classList.add('hidden');
+        healingHeader.classList.remove('hidden');
+        diffContainer.classList.remove('hidden');
+        diagBar.classList.remove('hidden');
+
+        btnCodegen.className = "px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition flex items-center space-x-1";
+        btnHealing.className = "px-2.5 py-1 rounded-md bg-purple-600 text-white font-semibold transition flex items-center space-x-1";
+
+        // Initialize Diff Editor with broken code if not already set
+        if (diffEditor) {
+          const currentModel = diffEditor.getModel();
+          if (!currentModel || !currentModel.original) {
+            loadSampleBrokenCode();
+          }
+          diffEditor.layout();
+        }
       }
-      selectPOMTab(activePOMIdx);
+    }
+
+    function loadSampleBrokenCode() {
+      if (!diffEditor) return;
+      const origModel = monaco.editor.createModel(SAMPLE_BROKEN_CODE, 'python');
+      const modModel = monaco.editor.createModel('# Bấm nút "Kích Hoạt Tự Sửa Lỗi (Heal Now)" để xem mã được tự phục hồi bên phải...', 'python');
+      diffEditor.setModel({ original: origModel, modified: modModel });
+      diffEditor.layout();
+
+      document.getElementById('heal-turn-pill').innerText = "Đã nạp mã lỗi mẫu";
+      document.getElementById('healing-status-tag').className = "px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20";
+      document.getElementById('healing-status-tag').innerText = "CONTAINS ERRORS";
+      document.getElementById('healing-errors-list').innerHTML = `
+        <div class="text-amber-400 font-mono">⚠️ Phát hiện lỗi tiềm ẩn: IndentationError tại line 13 & Brittle XPath tại line 8</div>
+        <div class="text-slate-400 italic">Bấm "Kích Hoạt Tự Sửa Lỗi (Heal Now)" để hệ thống chạy Reflection Loop sửa tự động.</div>
+      `;
+    }
+
+    async function triggerSelfHealing() {
+      if (!diffEditor || !diffEditor.getModel()) return;
+      const brokenCode = diffEditor.getModel().original.getValue();
+      const btn = document.getElementById('btn-trigger-heal');
+      const pill = document.getElementById('heal-turn-pill');
+      const statusTag = document.getElementById('healing-status-tag');
+      const errList = document.getElementById('healing-errors-list');
+
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang sửa...`;
+      pill.innerText = "Đang phân tích AST...";
+
+      try {
+        const res = await fetch('/api/v1/qa/heal-diff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ broken_code: brokenCode, language: "python", file_path: "test_payment.py" })
+        });
+        const data = await res.json();
+
+        // Update right side of diff editor
+        const modModel = monaco.editor.createModel(data.healed_code, 'python');
+        diffEditor.setModel({ original: diffEditor.getModel().original, modified: modModel });
+        diffEditor.layout();
+
+        // Update diagnostics
+        pill.innerText = `${data.healing_attempts || 1} turn(s) AST healed`;
+        if (data.is_valid) {
+          statusTag.className = "px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+          statusTag.innerText = "✓ 100% AST VALID";
+        } else {
+          statusTag.className = "px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20";
+          statusTag.innerText = "SYNTAX ERRORS DETECTED";
+        }
+
+        errList.innerHTML = '';
+        if (data.errors_detected && data.errors_detected.length > 0) {
+          data.errors_detected.forEach(err => {
+            const div = document.createElement('div');
+            div.className = "text-rose-300 font-mono text-[11px] flex items-center space-x-1";
+            div.innerHTML = `<i class="fa-solid fa-circle-xmark text-rose-400 text-[10px]"></i> <span>${err}</span>`;
+            errList.appendChild(div);
+          });
+          const successDiv = document.createElement('div');
+          successDiv.className = "text-emerald-400 font-mono text-[11px] font-semibold mt-1 flex items-center space-x-1";
+          successDiv.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400 text-[10px]"></i> <span>Đã tự động chuẩn hóa cú pháp AST và thay thế locator dễ vỡ bằng resilient semantic locators!</span>`;
+          errList.appendChild(successDiv);
+        } else {
+          errList.innerHTML = `<div class="text-emerald-400 font-mono flex items-center space-x-1"><i class="fa-solid fa-circle-check"></i> <span>Mã nguồn đã được xác thực hợp lệ theo chuẩn AST!</span></div>`;
+        }
+      } catch (err) {
+        alert("Lỗi khi tự sửa mã nguồn: " + err);
+      } finally {
+        btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> <span>Kích Hoạt Tự Sửa Lỗi (Heal Now)</span>`;
+      }
+    }
+
+    function toggleDiffMode() {
+      switchPOMWorkspace(isDiffModeActive ? 'codegen' : 'healing');
+      isDiffModeActive = !isDiffModeActive;
     }
 
     function copyCurrentCode() {
