@@ -49,7 +49,7 @@ def analyze_pr_diff(request: PRAnalyzeRequest):
         if line.startswith("diff --git"):
             parts = line.split()
             if len(parts) >= 4:
-                current_file = parts[3].lstrip("b/")
+                current_file = parts[3][2:] if parts[3].startswith("b/") else parts[3]
                 files_changed[current_file] = []
         elif line.startswith("+") and not line.startswith("+++"):
             clean_line = line.lstrip("+").strip()
