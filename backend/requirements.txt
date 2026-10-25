@@ -1,0 +1,11 @@
+fastapi==0.120.0
+anyio==4.11.0
+uvicorn[standard]==0.38.0
+sqlalchemy==2.0.44
+psycopg[binary]==3.2.11
+alembic==1.17.1
+pydantic==2.12.3
+pydantic-settings==2.11.0
+openai==2.6.1
+tenacity==9.1.2
+
