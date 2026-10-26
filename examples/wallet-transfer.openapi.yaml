@@ -1,0 +1,304 @@
+openapi: 3.0.3
+info:
+  title: Wallet Transfer API
+  version: 1.0.0
+  description: Sample contract for QA agent evaluation. Example only; not a live API.
+servers:
+  - url: https://api.example.test/v1
+    description: Non-routable example server; do not send requests to it.
+security:
+  - BearerAuth: []
+paths:
+  /transfer-quotes:
+    post:
+      operationId: createTransferQuote
+      summary: Quote the fee and total debit for a wallet transfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransferQuoteRequest'
+      responses:
+        '201':
+          description: Transfer quote created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferQuote'
+        '400':
+          description: Request is malformed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication is required or invalid
+        '403':
+          description: The caller cannot access one or both wallets
+        '404':
+          description: A wallet does not exist
+        '422':
+          description: A request field failed validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /transfers:
+    post:
+      operationId: submitTransfer
+      summary: Submit a quoted wallet transfer
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-supplied key for a transfer submission
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitTransferRequest'
+      responses:
+        '201':
+          description: Transfer submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '400':
+          description: Request is malformed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication is required or invalid
+        '403':
+          description: The caller cannot submit this transfer
+        '404':
+          description: Quote does not exist
+        '409':
+          description: Quote expired, balance changed, or idempotency conflict; details are unspecified
+        '422':
+          description: OTP or request fields failed validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /transfers/{transferId}:
+    parameters:
+      - $ref: '#/components/parameters/TransferId'
+    get:
+      operationId: getTransfer
+      summary: Get transfer details
+      responses:
+        '200':
+          description: Transfer details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '401':
+          description: Authentication is required or invalid
+        '403':
+          description: The caller cannot access this transfer
+        '404':
+          description: Transfer does not exist
+  /transfers/{transferId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/TransferId'
+    post:
+      operationId: cancelTransfer
+      summary: Cancel a pending transfer
+      responses:
+        '200':
+          description: Transfer cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '401':
+          description: Authentication is required or invalid
+        '403':
+          description: The caller cannot cancel this transfer
+        '404':
+          description: Transfer does not exist
+        '409':
+          description: Transfer is not in a cancellable state
+  /wallets/{walletId}/transfers:
+    get:
+      operationId: listWalletTransfers
+      summary: List transfers for a wallet
+      parameters:
+        - $ref: '#/components/parameters/WalletId'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/TransferStatus'
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: pageToken
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: A page of wallet transfers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextPageToken]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transfer'
+                  nextPageToken:
+                    type: string
+                    nullable: true
+        '400':
+          description: Query parameters are invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication is required or invalid
+        '403':
+          description: The caller cannot access this wallet
+        '404':
+          description: Wallet does not exist
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    TransferId:
+      name: transferId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    WalletId:
+      name: walletId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    TransferStatus:
+      type: string
+      enum: [pending, completed, failed, cancelled]
+    CreateTransferQuoteRequest:
+      type: object
+      required: [sourceWalletId, destinationWalletId, amount]
+      properties:
+        sourceWalletId:
+          type: string
+          format: uuid
+        destinationWalletId:
+          type: string
+          format: uuid
+        amount:
+          type: integer
+          minimum: 1
+          description: Amount in minor currency units. Business limits are not expressed here.
+    TransferQuote:
+      type: object
+      required: [quoteId, sourceWalletId, destinationWalletId, amount, fee, totalDebit, currency, expiresAt]
+      properties:
+        quoteId:
+          type: string
+          format: uuid
+        sourceWalletId:
+          type: string
+          format: uuid
+        destinationWalletId:
+          type: string
+          format: uuid
+        amount:
+          type: integer
+          minimum: 1
+        fee:
+          type: integer
+          minimum: 0
+        totalDebit:
+          type: integer
+          minimum: 1
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        expiresAt:
+          type: string
+          format: date-time
+    SubmitTransferRequest:
+      type: object
+      required: [quoteId, otp]
+      properties:
+        quoteId:
+          type: string
+          format: uuid
+        otp:
+          type: string
+          minLength: 6
+          maxLength: 6
+          description: One-time password supplied by the customer.
+    Transfer:
+      type: object
+      required:
+        [id, quoteId, sourceWalletId, destinationWalletId, amount, fee, currency, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        quoteId:
+          type: string
+          format: uuid
+        sourceWalletId:
+          type: string
+          format: uuid
+        destinationWalletId:
+          type: string
+          format: uuid
+        amount:
+          type: integer
+          minimum: 1
+        fee:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        status:
+          $ref: '#/components/schemas/TransferStatus'
+        createdAt:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string

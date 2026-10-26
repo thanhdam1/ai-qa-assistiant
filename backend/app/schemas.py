@@ -64,6 +64,77 @@ class TestCaseType(str, Enum):
     integration = "integration"
 
 
+class ApiFindingType(str, Enum):
+    positive = "positive"
+    negative = "negative"
+    boundary = "boundary"
+    schema = "schema"
+    security = "security"
+    gap = "gap"
+    conflict = "conflict"
+
+
+class ApiOperationSummary(BaseModel):
+    operation_id: str
+    method: str
+    path: str
+    summary: str = ""
+
+
+class ApiContractFinding(BaseModel):
+    id: str = Field(pattern=r"^API-[A-Za-z0-9_-]+$")
+    operation_id: str
+    method: str
+    path: str
+    type: ApiFindingType
+    title: str = Field(min_length=1, max_length=240)
+    detail: str = Field(min_length=1)
+    severity: Severity
+    classification: FindingClassification
+    source_reference: str = Field(min_length=1, description="OpenAPI operation or JSON Pointer")
+    story_reference: str | None = None
+    expected_status_codes: list[int] = Field(default_factory=list)
+    needs_clarification: bool
+
+
+class ApiContractReviewContent(BaseModel):
+    language: Literal["vi", "en"]
+    summary: str = Field(min_length=1)
+    operations: list[ApiOperationSummary]
+    findings: list[ApiContractFinding]
+
+
+class ApiSpecificationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    story_id: str
+    title: str
+    file_name: str
+    openapi_version: str
+    version: int
+    operations: list[ApiOperationSummary]
+    checksum: str
+    stale: bool
+    created_at: datetime
+
+
+class ApiContractReviewRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    story_id: str
+    specification_id: str
+    story_version: int
+    ai_original: ApiContractReviewContent
+    content: ApiContractReviewContent
+    status: Literal["draft", "approved"]
+    stale: bool
+    model_name: str
+    prompt_version: str
+    approved_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class TestStep(BaseModel):
     order: int = Field(ge=1)
     action: str = Field(min_length=1)
@@ -84,15 +155,20 @@ class TestCase(BaseModel):
     test_data: list[str]
     steps: list[TestStep] = Field(min_length=1)
     expected_result: str = Field(min_length=1)
-    requirement_traceability: list[str] = Field(min_length=1)
+    requirement_traceability: list[str] = Field(default_factory=list)
+    api_traceability: list[str] = Field(default_factory=list)
+    api_method: str | None = None
+    api_path: str | None = None
+    api_request: str | None = None
+    expected_status_codes: list[int] = Field(default_factory=list)
     assumptions: list[str]
     needs_clarification: bool
-
 
 class CoverageTargetType(str, Enum):
     acceptance_criterion = "acceptance_criterion"
     risk = "risk"
     category = "category"
+    api_check = "api_check"
 
 
 class CoverageStatus(str, Enum):
@@ -119,35 +195,11 @@ class TestCaseSetContent(BaseModel):
         case_ids = {case.id for case in self.test_cases}
         if len(case_ids) != len(self.test_cases):
             raise ValueError("Test case IDs must be unique")
-        matrix_keys = [(entry.target_type, entry.target_id) for entry in self.coverage_matrix]
-        if len(set(matrix_keys)) != len(matrix_keys):
-            raise ValueError("Coverage matrix targets must be unique")
-        for entry in self.coverage_matrix:
-            unknown_ids = set(entry.test_case_ids) - case_ids
-            if unknown_ids:
-                raise ValueError(f"Coverage references unknown test case IDs: {', '.join(sorted(unknown_ids))}")
-            if entry.status == CoverageStatus.covered and not entry.test_case_ids:
-                raise ValueError("Covered targets must reference at least one test case")
-            if entry.status == CoverageStatus.needs_clarification and not entry.explanation.strip():
-                raise ValueError("Unresolved coverage targets need an explanation")
-            if entry.target_type != CoverageTargetType.category:
-                for case in self.test_cases:
-                    if case.id in entry.test_case_ids and entry.target_id not in case.requirement_traceability:
-                        raise ValueError(
-                            f"Test case {case.id} must trace coverage target {entry.target_id}"
-                        )
-        if not self.coverage_matrix:
-            return self
-        for category in TestCaseType:
-            entries = [
-                entry for entry in self.coverage_matrix
-                if entry.target_type == CoverageTargetType.category and entry.target_id == category.value
-            ]
-            if len(entries) != 1:
-                raise ValueError(f"Coverage matrix must report category {category.value} exactly once")
-            has_case = any(case.type == category for case in self.test_cases)
-            if has_case != (entries[0].status == CoverageStatus.covered):
-                raise ValueError(f"Category coverage status does not match generated {category.value} tests")
+        if any(
+            not case.requirement_traceability and not case.api_traceability
+            for case in self.test_cases
+        ):
+            raise ValueError("Test cases need traceability to a requirement or API finding")
         return self
 
 
@@ -203,6 +255,7 @@ class RequirementReviewRead(BaseModel):
 
 class TestCaseSetCreate(BaseModel):
     review_id: str
+    api_contract_review_id: str | None = None
 
 
 class TestCaseSetUpdate(BaseModel):
@@ -214,6 +267,7 @@ class TestCaseSetRead(BaseModel):
     id: str
     story_id: str
     review_id: str
+    api_contract_review_id: str | None = None
     story_version: int
     ai_original: TestCaseSetContent
     content: TestCaseSetContent
@@ -230,6 +284,8 @@ class TestCaseSetRead(BaseModel):
 class StoryWorkspace(StoryRead):
     reviews: list[RequirementReviewRead]
     test_case_sets: list[TestCaseSetRead]
+    api_specifications: list[ApiSpecificationRead] = Field(default_factory=list)
+    api_contract_reviews: list[ApiContractReviewRead] = Field(default_factory=list)
 
 
 class ErrorBody(BaseModel):

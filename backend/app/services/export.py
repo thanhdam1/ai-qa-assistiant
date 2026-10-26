@@ -2,7 +2,7 @@ import csv
 import io
 import json
 
-from app.models import RequirementReview, TestCaseSet
+from app.models import ApiContractReview, RequirementReview, TestCaseSet
 
 
 def json_bytes(content: dict) -> bytes:
@@ -50,6 +50,48 @@ def review_csv(review: RequirementReview) -> bytes:
     return ("\ufeff" + output.getvalue()).encode("utf-8")
 
 
+def api_contract_review_csv(review: ApiContractReview) -> bytes:
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "id",
+            "operation_id",
+            "method",
+            "path",
+            "type",
+            "title",
+            "detail",
+            "severity",
+            "classification",
+            "source_reference",
+            "story_reference",
+            "expected_status_codes",
+            "needs_clarification",
+        ]
+    )
+    content = review.content
+    for finding in content.get("findings", []):
+        writer.writerow(
+            [
+                finding["id"],
+                finding["operation_id"],
+                finding["method"],
+                finding["path"],
+                finding["type"],
+                finding["title"],
+                finding["detail"],
+                finding["severity"],
+                finding["classification"],
+                finding["source_reference"],
+                finding.get("story_reference") or "",
+                ",".join(str(code) for code in finding.get("expected_status_codes", [])),
+                str(finding["needs_clarification"]).lower(),
+            ]
+        )
+    return ("\ufeff" + output.getvalue()).encode("utf-8")
+
+
 def test_set_csv(test_set: TestCaseSet) -> bytes:
     output = io.StringIO(newline="")
     writer = csv.writer(output)
@@ -68,6 +110,11 @@ def test_set_csv(test_set: TestCaseSet) -> bytes:
             "requirement_traceability",
             "assumptions",
             "needs_clarification",
+            "api_method",
+            "api_path",
+            "api_request",
+            "expected_status_codes",
+            "api_traceability",
             "coverage_target_type",
             "coverage_target_id",
             "coverage_status",
@@ -95,6 +142,11 @@ def test_set_csv(test_set: TestCaseSet) -> bytes:
                 "\n".join(case["requirement_traceability"]),
                 "\n".join(case["assumptions"]),
                 str(case["needs_clarification"]).lower(),
+                case.get("api_method") or "",
+                case.get("api_path") or "",
+                case.get("api_request") or "",
+                ",".join(str(code) for code in case.get("expected_status_codes", [])),
+                "\n".join(case.get("api_traceability", [])),
                 "",
                 "",
                 "",
@@ -104,19 +156,9 @@ def test_set_csv(test_set: TestCaseSet) -> bytes:
         )
     for entry in test_set.content.get("coverage_matrix", []):
         writer.writerow(
-            [
-                "coverage",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
+            ["coverage"]
+            + [""] * 17
+            + [
                 entry["target_type"],
                 entry["target_id"],
                 entry["status"],

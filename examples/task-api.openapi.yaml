@@ -1,0 +1,171 @@
+openapi: 3.0.3
+info:
+  title: Task API Sample
+  version: 1.0.0
+  description: Sample API contract for testing QA Compass agents.
+servers:
+  - url: https://api.example.test/v1
+    description: Example server; not a live service
+security:
+  - BearerAuth: []
+paths:
+  /tasks:
+    post:
+      operationId: createTask
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          description: Request is invalid; error response format is not specified
+        '401':
+          description: Authentication is required or invalid
+    get:
+      operationId: listTasks
+      summary: List tasks
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: A page of tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, limit]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Task'
+                  page:
+                    type: integer
+                  limit:
+                    type: integer
+        '401':
+          description: Authentication is required or invalid
+  /tasks/{taskId}:
+    parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getTask
+      summary: Get a task
+      responses:
+        '200':
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '401':
+          description: Authentication is required or invalid
+        '404':
+          description: Task does not exist
+    patch:
+      operationId: updateTask
+      summary: Update a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskRequest'
+      responses:
+        '200':
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '401':
+          description: Authentication is required or invalid
+        '404':
+          description: Task does not exist
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    TaskStatus:
+      type: string
+      enum: [todo, in_progress, done]
+    CreateTaskRequest:
+      type: object
+      required: [title, status]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        dueAt:
+          type: string
+          format: date-time
+    UpdateTaskRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        dueAt:
+          type: string
+          format: date-time
+    Task:
+      type: object
+      required: [id, title, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        dueAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
