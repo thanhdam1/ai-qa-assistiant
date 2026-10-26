@@ -39,10 +39,16 @@ class ReviewItem(BaseModel):
     )
 
 
+class RequirementObligation(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    text: str = Field(min_length=1)
+
+
 class ExistingCriterion(BaseModel):
     id: str = Field(min_length=1, max_length=80)
     criterion: str = Field(min_length=1)
     source_reference: str
+    obligations: list[RequirementObligation] = Field(default_factory=list)
 
 
 class RequirementReviewContent(BaseModel):
@@ -166,6 +172,7 @@ class TestCase(BaseModel):
 
 class CoverageTargetType(str, Enum):
     acceptance_criterion = "acceptance_criterion"
+    requirement_obligation = "requirement_obligation"
     risk = "risk"
     category = "category"
     api_check = "api_check"

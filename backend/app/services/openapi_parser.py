@@ -109,9 +109,15 @@ def _collect_source_references(
     return references
 
 
-def _resolve(value: Any, document: dict[str, Any], stack: tuple[str, ...] = ()) -> Any:
+def _resolve(
+    value: Any,
+    document: dict[str, Any],
+    stack: tuple[str, ...] = (),
+    openapi_version: str = "3.1.0",
+    schema_context: bool = False,
+) -> Any:
     if isinstance(value, list):
-        return [_resolve(item, document, stack) for item in value]
+        return [_resolve(item, document, stack, openapi_version, schema_context) for item in value]
     if not isinstance(value, dict):
         return value
     ref = value.get("$ref")
@@ -119,12 +125,97 @@ def _resolve(value: Any, document: dict[str, Any], stack: tuple[str, ...] = ()) 
         if ref in stack:
             return {"$ref": ref, "recursive_reference": True}
         target = _pointer_value(document, ref)
-        resolved = _resolve(target, document, (*stack, ref))
+        resolved = _resolve(target, document, (*stack, ref), openapi_version, schema_context)
         if isinstance(resolved, dict):
             siblings = {key: item for key, item in value.items() if key != "$ref"}
-            return resolved | _resolve(siblings, document, stack)
+            if schema_context and openapi_version.startswith("3.1."):
+                return resolved | _resolve(siblings, document, stack, openapi_version, True)
+            if not schema_context and openapi_version.startswith("3.1."):
+                allowed = {key: item for key, item in siblings.items() if key in {"summary", "description"}}
+                return resolved | _resolve(allowed, document, stack, openapi_version, False)
+            return resolved
         return resolved
-    return {key: _resolve(item, document, stack) for key, item in value.items()}
+    return {
+        key: _resolve(
+            item,
+            document,
+            stack,
+            openapi_version,
+            schema_context or key in {"schema", "schemas", "items", "properties", "additionalProperties"},
+        )
+        for key, item in value.items()
+    }
+
+
+def _escape_pointer(token: str) -> str:
+    return token.replace("~", "~0").replace("/", "~1")
+
+
+def _merge_parameters(path_parameters: Any, operation_parameters: Any) -> list[dict[str, Any]]:
+    """Apply OpenAPI operation-level parameter overrides by (name, in)."""
+    merged: dict[tuple[str, str], dict[str, Any]] = {}
+    for parameter in path_parameters if isinstance(path_parameters, list) else []:
+        if isinstance(parameter, dict) and isinstance(parameter.get("name"), str) and isinstance(parameter.get("in"), str):
+            merged[(parameter["name"], parameter["in"])] = parameter
+    for parameter in operation_parameters if isinstance(operation_parameters, list) else []:
+        if isinstance(parameter, dict) and isinstance(parameter.get("name"), str) and isinstance(parameter.get("in"), str):
+            merged[(parameter["name"], parameter["in"])] = parameter
+    return list(merged.values())
+
+
+def _resolve_path_item(
+    value: dict[str, Any], document: dict[str, Any], version: str, stack: tuple[str, ...] = ()
+) -> dict[str, Any]:
+    """Path Item $ref has its own sibling/merge semantics, separate from Reference Object."""
+    ref = value.get("$ref")
+    base: dict[str, Any] = {}
+    if isinstance(ref, str):
+        if ref in stack:
+            raise ValueError(f"Cyclic Path Item reference: {ref}")
+        target = _pointer_value(document, ref)
+        if not isinstance(target, dict):
+            raise ValueError(f"Path Item reference must resolve to an object: {ref}")
+        base = _resolve_path_item(target, document, version, (*stack, ref))
+    siblings = {key: item for key, item in value.items() if key != "$ref"}
+    resolved_siblings = _resolve(siblings, document, openapi_version=version)
+    return base | resolved_siblings
+
+
+def _path_item_operation_source(
+    value: dict[str, Any],
+    pointer: str,
+    method: str,
+    document: dict[str, Any],
+    stack: tuple[str, ...] = (),
+) -> tuple[dict[str, Any] | None, str | None]:
+    local = value.get(method)
+    if isinstance(local, dict):
+        return local, f"{pointer}/{method}"
+    ref = value.get("$ref")
+    if isinstance(ref, str) and ref not in stack:
+        target = _pointer_value(document, ref)
+        if isinstance(target, dict):
+            return _path_item_operation_source(
+                target, ref, method, document, (*stack, ref)
+            )
+    return None, None
+
+
+def _path_item_field_source(
+    value: dict[str, Any],
+    pointer: str,
+    field: str,
+    document: dict[str, Any],
+    stack: tuple[str, ...] = (),
+) -> str | None:
+    if field in value:
+        return f"{pointer}/{field}"
+    ref = value.get("$ref")
+    if isinstance(ref, str) and ref not in stack:
+        target = _pointer_value(document, ref)
+        if isinstance(target, dict):
+            return _path_item_field_source(target, ref, field, document, (*stack, ref))
+    return None
 
 
 def _validate_references(value: Any, document: dict[str, Any]) -> None:
@@ -191,24 +282,119 @@ def parse_openapi(file_name: str, raw: bytes) -> ParsedOpenApi:
         for path, path_item in paths.items():
             if not isinstance(path_item, dict):
                 continue
-            resolved_path_item = _resolve(path_item, document)
+            resolved_path_item = _resolve_path_item(path_item, document, version)
             for method, operation in resolved_path_item.items():
                 method = method.lower()
                 if method not in HTTP_METHODS or not isinstance(operation, dict):
                     continue
-                pointer = f"#/paths/{path.replace('~', '~0').replace('/', '~1')}/{method}"
-                raw_operation = path_item.get(method, operation)
-                resolved = _resolve(operation, document)
+                path_pointer = f"#/paths/{_escape_pointer(path)}"
+                raw_operation, operation_pointer = _path_item_operation_source(
+                    path_item, path_pointer, method, document
+                )
+                if raw_operation is None:
+                    raw_operation = operation
+                    operation_pointer = f"{path_pointer}/{method}"
+                pointer = operation_pointer
+                resolved = _resolve(operation, document, openapi_version=version)
+                raw_path_parameters = path_item.get(
+                    "parameters", resolved_path_item.get("parameters", [])
+                )
+                path_parameters_pointer = _path_item_field_source(
+                    path_item, path_pointer, "parameters", document
+                )
+                raw_operation_parameters = raw_operation.get("parameters", []) if isinstance(raw_operation, dict) else []
+                path_parameters = _resolve(raw_path_parameters, document, openapi_version=version)
+                operation_parameters = _resolve(resolved.get("parameters", []), document, openapi_version=version)
+                effective_parameters = _merge_parameters(path_parameters, operation_parameters)
+
+                if isinstance(raw_operation, dict) and "servers" in raw_operation:
+                    servers = _resolve(raw_operation["servers"], document, openapi_version=version)
+                    servers_source_pointer = f"{pointer}/servers"
+                elif "servers" in resolved_path_item:
+                    servers = _resolve(resolved_path_item["servers"], document, openapi_version=version)
+                    servers_source_pointer = _path_item_field_source(
+                        path_item, path_pointer, "servers", document
+                    )
+                elif "servers" in document:
+                    servers = _resolve(document["servers"], document, openapi_version=version)
+                    servers_source_pointer = "#/servers"
+                else:
+                    servers = []
+                    servers_source_pointer = None
+
+                if isinstance(raw_operation, dict) and "security" in raw_operation:
+                    security = _resolve(raw_operation["security"], document, openapi_version=version)
+                    security_source_pointer = f"{pointer}/security"
+                elif "security" in document:
+                    security = _resolve(document["security"], document, openapi_version=version)
+                    security_source_pointer = "#/security"
+                else:
+                    security = []
+                    security_source_pointer = None
+                security_schemes = _resolve(components.get("securitySchemes", {}), document, openapi_version=version)
+                security_source_references = (
+                    {security_source_pointer} if security_source_pointer else set()
+                )
+                if security_source_pointer:
+                    security_source_references.update(
+                        _collect_source_references(document, security, security_source_pointer)
+                    )
+                for requirement in security if isinstance(security, list) else []:
+                    if isinstance(requirement, dict):
+                        for scheme_name in requirement:
+                            if scheme_name not in components.get("securitySchemes", {}):
+                                raise ValueError(
+                                    f"Unresolved security scheme: {scheme_name}"
+                                )
+                            scheme_pointer = (
+                                f"#/components/securitySchemes/{_escape_pointer(str(scheme_name))}"
+                            )
+                            security_source_references.update(
+                                _collect_source_references(
+                                    document,
+                                    components["securitySchemes"][scheme_name],
+                                    scheme_pointer,
+                                )
+                            )
+
                 source_references = _collect_source_references(
                     document, raw_operation, pointer
                 )
-                source_references.update(
-                    _collect_source_references(
-                        document,
-                        path_item.get("parameters", []),
-                        f"#/paths/{path.replace('~', '~0').replace('/', '~1')}/parameters",
+                if "$ref" in path_item:
+                    source_references.update(
+                        _collect_source_references(document, path_item, path_pointer)
                     )
+                elif "parameters" in path_item:
+                    source_references.update(
+                        _collect_source_references(
+                            document, path_item["parameters"], f"{path_pointer}/parameters"
+                        )
+                    )
+                if isinstance(raw_operation, dict) and "parameters" in raw_operation:
+                    source_references.update(
+                        _collect_source_references(
+                            document, raw_operation["parameters"], f"{pointer}/parameters"
+                        )
+                    )
+                source_references.update(
+                    _collect_source_references(document, security, security_source_pointer)
+                    if security_source_pointer
+                    else set()
                 )
+                source_references.update(security_source_references)
+                source_references.update(
+                    _collect_source_references(document, servers, servers_source_pointer)
+                    if servers_source_pointer
+                    else set()
+                )
+                if "securitySchemes" in components:
+                    source_references.update(
+                        _collect_source_references(
+                            document,
+                            components["securitySchemes"],
+                            "#/components/securitySchemes",
+                        )
+                    )
                 operations.append(
                     {
                         "operation_id": resolved.get("operationId") or f"{method.upper()} {path}",
@@ -217,15 +403,40 @@ def parse_openapi(file_name: str, raw: bytes) -> ParsedOpenApi:
                         "summary": resolved.get("summary", ""),
                         "source_reference": pointer,
                         "source_references": sorted(source_references),
-                        "parameters": _resolve(resolved_path_item.get("parameters", []), document)
-                        + _resolve(resolved.get("parameters", []), document),
-                        "request_body": _resolve(resolved.get("requestBody"), document),
-                        "responses": _resolve(resolved.get("responses", {}), document),
-                        "security": resolved.get("security", document.get("security", [])),
-                        "security_schemes": _resolve(
-                            components.get("securitySchemes", {}), document
+                        "parameters": effective_parameters,
+                        "parameters_source_references": sorted(
+                            (
+                                _collect_source_references(
+                                    document,
+                                    _pointer_value(document, path_parameters_pointer),
+                                    path_parameters_pointer,
+                                )
+                                if path_parameters_pointer
+                                else set()
+                            )
+                            | (
+                                _collect_source_references(
+                                    document,
+                                    raw_operation_parameters,
+                                    f"{pointer}/parameters",
+                                )
+                                if isinstance(raw_operation, dict)
+                                and "parameters" in raw_operation
+                                else set()
+                            )
                         ),
-                        "servers": _resolve(resolved.get("servers", document.get("servers", [])), document),
+                        "request_body": _resolve(resolved.get("requestBody"), document, openapi_version=version),
+                        "responses": _resolve(resolved.get("responses", {}), document, openapi_version=version),
+                        "security": security,
+                        "security_schemes": security_schemes,
+                        "security_source_references": sorted(security_source_references),
+                        "servers": servers,
+                        "servers_source_references": sorted(
+                            _collect_source_references(document, servers, servers_source_pointer)
+                            if servers_source_pointer
+                            else set()
+                        ),
+                        "openapi_version": version,
                     }
                 )
     except ValueError as exc:

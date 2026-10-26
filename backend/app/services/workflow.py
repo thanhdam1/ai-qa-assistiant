@@ -1,4 +1,5 @@
-import logging
+import hashlib
+import re
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select, update
@@ -19,7 +20,9 @@ from app.schemas import (
     CoverageEntry,
     CoverageStatus,
     CoverageTargetType,
+    ExistingCriterion,
     RequirementReviewContent,
+    RequirementObligation,
     StoryCreate,
     StoryUpdate,
     TestCaseType,
@@ -32,9 +35,6 @@ from app.services.prompts import (
     REVIEW_PROMPT_VERSION,
     TEST_CASE_PROMPT_VERSION,
 )
-
-logger = logging.getLogger(__name__)
-
 
 def get_story(db: Session, story_id: str, with_history: bool = False) -> Story:
     query = select(Story).where(Story.id == story_id)
@@ -108,6 +108,122 @@ def get_api_contract_review(db: Session, review_id: str) -> ApiContractReview:
     return review
 
 
+def _validate_api_review_content(
+    content: ApiContractReviewContent, specification: ApiSpecification
+) -> None:
+    operation_by_id = {item["operation_id"]: item for item in specification.operations}
+    seen: set[str] = set()
+    for finding in content.findings:
+        operation = operation_by_id.get(finding.operation_id)
+        if finding.id in seen:
+            raise AppError("invalid_api_review", "API finding IDs must be unique", 422)
+        seen.add(finding.id)
+        if not operation or (finding.method.upper(), finding.path) != (
+            operation["method"], operation["path"]
+        ):
+            raise AppError("invalid_api_review", f"{finding.id} references an unknown operation", 422)
+        if (
+            finding.source_reference not in operation.get("source_references", [])
+            or not is_valid_source_reference(specification.document, finding.source_reference)
+        ):
+            raise AppError(
+                "invalid_source_reference",
+                f"{finding.id} must cite a valid source belonging to its operation",
+                422,
+            )
+        declared = {int(code) for code in operation.get("responses", {}) if str(code).isdigit()}
+        if set(finding.expected_status_codes) - declared:
+            raise AppError("invalid_api_review", f"{finding.id} contains an undocumented status code", 422)
+        if (finding.classification.value == "needs_clarification") != finding.needs_clarification:
+            raise AppError(
+                "invalid_api_review",
+                f"{finding.id} clarification flag must match its classification",
+                422,
+            )
+        if finding.type.value == "conflict" and not finding.story_reference:
+            raise AppError(
+                "invalid_api_review",
+                f"{finding.id} conflict must cite the story side of the conflict",
+                422,
+            )
+
+
+def _stable_requirement_id(criterion: ExistingCriterion) -> str:
+    normalized = re.sub(r"\s+", " ", criterion.criterion.strip().casefold())
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12].upper()
+    return f"REQ-{digest}"
+
+
+def _stable_obligation_id(requirement_id: str, text: str) -> str:
+    normalized = re.sub(r"\s+", " ", text.strip().casefold())
+    digest = hashlib.sha256(f"{requirement_id}:{normalized}".encode("utf-8")).hexdigest()[:12].upper()
+    return f"OBL-{digest}"
+
+
+def _normalize_requirement_ids(content: RequirementReviewContent) -> RequirementReviewContent:
+    used: set[str] = set()
+    items = []
+    for criterion in content.existing_acceptance_criteria:
+        base = _stable_requirement_id(criterion)
+        identifier = base
+        suffix = 2
+        while identifier in used:
+            identifier = f"{base}-{suffix}"
+            suffix += 1
+        used.add(identifier)
+        obligations = criterion.obligations or [
+            {"id": "", "text": criterion.criterion}
+        ]
+        normalized_obligations = []
+        for obligation in obligations:
+            text = obligation.text if hasattr(obligation, "text") else obligation["text"]
+            normalized_obligations.append(
+                RequirementObligation(
+                    id=_stable_obligation_id(identifier, text), text=text
+                )
+            )
+        items.append(
+            criterion.model_copy(
+                update={"id": identifier, "obligations": normalized_obligations}
+            )
+        )
+    return content.model_copy(update={"existing_acceptance_criteria": items})
+
+
+def _validate_requirement_review(content: RequirementReviewContent) -> None:
+    identifiers: set[str] = set()
+    groups = (
+        content.existing_acceptance_criteria,
+        content.missing_acceptance_criteria,
+        content.ambiguities_and_conflicts,
+        content.stakeholder_questions,
+        content.edge_cases,
+        content.assumptions,
+        content.risks,
+    )
+    for item in (entry for group in groups for entry in group):
+        if item.id in identifiers:
+            raise AppError("invalid_requirement_review", "Requirement review IDs must be unique", 422)
+        identifiers.add(item.id)
+        if not item.source_reference.strip():
+            raise AppError("invalid_requirement_review", f"{item.id} needs a source reference", 422)
+        if isinstance(item, ExistingCriterion):
+            obligation_ids = [obligation.id for obligation in item.obligations]
+            if not obligation_ids or len(obligation_ids) != len(set(obligation_ids)):
+                raise AppError(
+                    "invalid_requirement_review",
+                    f"{item.id} needs unique coverage obligations",
+                    422,
+                )
+            if identifiers.intersection(obligation_ids):
+                raise AppError(
+                    "invalid_requirement_review",
+                    "Requirement and obligation IDs must be unique",
+                    422,
+                )
+            identifiers.update(obligation_ids)
+
+
 def _api_review_by_key(
     db: Session, specification_id: str, idempotency_key: str
 ) -> ApiContractReview | None:
@@ -117,6 +233,51 @@ def _api_review_by_key(
             ApiContractReview.idempotency_key == idempotency_key,
         )
     )
+
+
+def _prepare_api_contract_review(
+    result: ApiContractReviewContent,
+    specification: ApiSpecification,
+    operations: list[ApiOperationSummary],
+) -> ApiContractReviewContent:
+    operation_by_id = {
+        operation["operation_id"]: operation for operation in specification.operations
+    }
+    for finding in result.findings:
+        operation = operation_by_id.get(finding.operation_id)
+        if (
+            operation is None
+            or finding.method.upper() != operation["method"]
+            or finding.path != operation["path"]
+        ):
+            raise AppError(
+                "invalid_operation_reference",
+                f"{finding.id} references an operation outside the uploaded OpenAPI document",
+                422,
+            )
+        if (
+            finding.source_reference not in operation.get("source_references", [])
+            or not is_valid_source_reference(specification.document, finding.source_reference)
+        ):
+            raise AppError(
+                "invalid_source_reference",
+                f"{finding.id} source must belong to its referenced operation",
+                422,
+            )
+        declared = {
+            int(code)
+            for code in operation.get("responses", {})
+            if str(code).isdigit()
+        }
+        if set(finding.expected_status_codes) - declared:
+            raise AppError(
+                "undocumented_status_code",
+                f"{finding.id} uses a status code not declared by its operation",
+                422,
+            )
+    result = result.model_copy(update={"operations": operations})
+    _validate_api_review_content(result, specification)
+    return result
 
 
 async def generate_api_contract_review(
@@ -130,6 +291,7 @@ async def generate_api_contract_review(
     if specification.stale:
         raise StaleVersionError()
     result = await ai.review_api_contract(story, specification)
+    raw_result = result.model_dump(mode="json")
     operations = [
         ApiOperationSummary(
             operation_id=operation["operation_id"],
@@ -139,42 +301,27 @@ async def generate_api_contract_review(
         )
         for operation in specification.operations
     ]
-    operation_by_id = {operation["operation_id"]: operation for operation in specification.operations}
-    for finding in result.findings:
-        operation = operation_by_id.get(finding.operation_id)
-        if (
-            operation is None
-            or finding.method.upper() != operation["method"]
-            or finding.path != operation["path"]
-        ):
-            raise AIProviderError(
-                "Gemini returned a finding for an operation outside the uploaded OpenAPI document",
-                provider_code="invalid_operation_reference",
+    for repair_attempt in range(2):
+        try:
+            result = _prepare_api_contract_review(result, specification, operations)
+            break
+        except AppError as exc:
+            if repair_attempt == 1 or not hasattr(ai, "repair_api_contract_review"):
+                raise AIProviderError(
+                    "API contract review failed application validation after one repair attempt",
+                    provider_code=exc.details.get("provider_code", exc.code),
+                ) from exc
+            result = await ai.repair_api_contract_review(
+                story,
+                specification,
+                result,
+                [{"code": exc.details.get("provider_code", exc.code), "message": exc.message}],
             )
-        if not is_valid_source_reference(specification.document, finding.source_reference):
-            # Gemini may cite a path into a dereferenced schema that only exists in the
-            # normalized prompt, not in the original uploaded document. Keep the finding
-            # reviewable by anchoring it to the known-valid operation pointer.
-            logger.warning(
-                "Normalizing invalid OpenAPI source reference for finding %s, operation %s",
-                finding.id,
-                finding.operation_id,
-            )
-            finding.source_reference = operation["source_reference"]
-        declared_statuses = {
-            int(code) for code in operation.get("responses", {}) if str(code).isdigit()
-        }
-        if set(finding.expected_status_codes) - declared_statuses:
-            raise AIProviderError(
-                "Gemini returned an expected status code not declared by OpenAPI",
-                provider_code="undocumented_status_code",
-            )
-    result = result.model_copy(update={"operations": operations})
     review = ApiContractReview(
         story_id=story.id,
         specification_id=specification.id,
         story_version=story.version,
-        ai_original=result.model_dump(mode="json"),
+        ai_original=raw_result,
         content=result.model_dump(mode="json"),
         idempotency_key=idempotency_key,
         model_name=ai.model_name,
@@ -194,6 +341,7 @@ def edit_api_contract_review(
     story = get_story(db, review.story_id)
     if review.stale or specification.stale or review.story_version != story.version:
         raise StaleVersionError()
+    _validate_api_review_content(content, specification)
     review.content = content.model_dump(mode="json")
     review.status = "draft"
     review.approved_at = None
@@ -213,6 +361,7 @@ def approve_api_contract_review(db: Session, review_id: str) -> ApiContractRevie
     story = get_story(db, review.story_id)
     if review.stale or specification.stale or review.story_version != story.version:
         raise StaleVersionError()
+    _validate_api_review_content(ApiContractReviewContent.model_validate(review.content), specification)
     review.status = "approved"
     review.approved_at = datetime.now(UTC)
     db.commit()
@@ -291,10 +440,13 @@ async def generate_review(
         return existing
     story = get_story(db, story_id)
     result = await ai.review_requirements(story)
+    ai_original_content = result.model_dump(mode="json")
+    result = _normalize_requirement_ids(result)
+    _validate_requirement_review(result)
     review = RequirementReview(
         story_id=story.id,
         story_version=story.version,
-        ai_original=result.model_dump(mode="json"),
+        ai_original=ai_original_content,
         content=result.model_dump(mode="json"),
         idempotency_key=idempotency_key,
         model_name=ai.model_name,
@@ -319,6 +471,8 @@ def edit_review(
     review = get_review(db, review_id)
     if review.stale:
         raise StaleVersionError()
+    content = _normalize_requirement_ids(content)
+    _validate_requirement_review(content)
     review.content = content.model_dump(mode="json")
     review.status = "draft"
     review.approved_at = None
@@ -334,6 +488,11 @@ def approve_review(db: Session, review_id: str) -> RequirementReview:
     story = get_story(db, review.story_id)
     if review.stale or review.story_version != story.version:
         raise StaleVersionError()
+    normalized_content = _normalize_requirement_ids(
+        RequirementReviewContent.model_validate(review.content)
+    )
+    _validate_requirement_review(normalized_content)
+    review.content = normalized_content.model_dump(mode="json")
     review.status = "approved"
     review.approved_at = datetime.now(UTC)
     db.commit()
@@ -433,7 +592,6 @@ def _mark_incomplete_api_cases(
 
 def _normalize_coverage_matrix(
     result: TestCaseSetContent,
-    story: Story,
     review: RequirementReviewContent,
     api_review: ApiContractReviewContent | None,
 ) -> TestCaseSetContent:
@@ -449,11 +607,15 @@ def _normalize_coverage_matrix(
             if entry.target_id in category_rows:
                 category_rows[entry.target_id].append(entry)
             continue
+        if entry.target_type == CoverageTargetType.acceptance_criterion:
+            # Keep new coverage at independently testable obligation granularity.
+            continue
         grouped_rows.setdefault((entry.target_type, entry.target_id), []).append(entry)
 
     required: dict[tuple[CoverageTargetType, str], str] = {
-        (CoverageTargetType.acceptance_criterion, f"AC-{index:03d}"): criterion
-        for index, criterion in enumerate(story.acceptance_criteria, start=1)
+        (CoverageTargetType.requirement_obligation, obligation.id): obligation.text
+        for item in review.existing_acceptance_criteria
+        for obligation in item.obligations
     }
     required.update(
         {
@@ -695,6 +857,219 @@ def _validate_coverage_content(content: TestCaseSetContent) -> None:
             )
 
 
+def _validate_suite_targets(
+    content: TestCaseSetContent,
+    review: RequirementReviewContent,
+    api_review: ApiContractReviewContent | None,
+    legacy_requirement_ids: set[str] | None = None,
+) -> None:
+    requirement_ids = {
+        identifier
+        for item in review.existing_acceptance_criteria
+        for identifier in [item.id, *(obligation.id for obligation in item.obligations)]
+    }
+    requirement_ids.update(legacy_requirement_ids or set())
+    risk_ids = {item.id for item in review.risks}
+    api_ids = {item.id for item in api_review.findings} if api_review else set()
+    for case in content.test_cases:
+        if set(case.requirement_traceability) - requirement_ids - risk_ids:
+            raise AppError(
+                "invalid_test_case_traceability",
+                f"{case.id} references an unknown requirement target",
+                422,
+            )
+        if set(case.api_traceability) - api_ids:
+            raise AppError(
+                "invalid_test_case_traceability",
+                f"{case.id} references an unknown API finding",
+                422,
+            )
+
+    required = {
+        (CoverageTargetType.requirement_obligation, obligation.id)
+        for item in review.existing_acceptance_criteria
+        for obligation in item.obligations
+    }
+    required.update(
+        (CoverageTargetType.risk, item.id)
+        for item in review.risks
+        if item.severity.value in {"high", "critical"}
+    )
+    required.update(
+        (CoverageTargetType.api_check, item.id) for item in (api_review.findings if api_review else [])
+    )
+    required.update(
+        (CoverageTargetType.category, category.value) for category in TestCaseType
+    )
+    coverage_keys = {(entry.target_type, entry.target_id) for entry in content.coverage_matrix}
+    if required - coverage_keys:
+        raise AppError(
+            "incomplete_test_case_coverage",
+            "Coverage matrix is missing required requirement, risk, API, or category targets",
+            422,
+            {"missing": sorted(f"{kind.value}:{target}" for kind, target in required - coverage_keys)},
+        )
+    allowed = (
+        {(CoverageTargetType.requirement_obligation, item) for item in requirement_ids}
+        | {(CoverageTargetType.risk, item) for item in risk_ids}
+        | {(CoverageTargetType.api_check, item) for item in api_ids}
+        | {(CoverageTargetType.category, item.value) for item in TestCaseType}
+    )
+    if coverage_keys - allowed:
+        raise AppError(
+            "invalid_test_case_coverage",
+            "Coverage matrix contains targets outside the approved requirement and API reviews",
+            422,
+            {"unknown": sorted(f"{kind.value}:{target}" for kind, target in coverage_keys - allowed)},
+        )
+
+
+def _validate_test_suite_context(
+    db: Session, test_set: TestCaseSet, content: TestCaseSetContent
+) -> None:
+    _validate_api_test_case_fields(content)
+    _validate_coverage_content(content)
+    review = get_review(db, test_set.review_id)
+    review_content = _normalize_requirement_ids(
+        RequirementReviewContent.model_validate(review.content)
+    )
+    _validate_requirement_review(review_content)
+    normalized_review = review_content.model_dump(mode="json")
+    if review.content != normalized_review:
+        # Backfill stable requirement/obligation IDs for reviews created before this schema.
+        review.content = normalized_review
+        db.commit()
+    requirement_ids = {item.id for item in review_content.existing_acceptance_criteria}
+    requirement_ids.update(
+        obligation.id
+        for item in review_content.existing_acceptance_criteria
+        for obligation in item.obligations
+    )
+    original_review = RequirementReviewContent.model_validate(review.ai_original)
+    # Historical AI IDs remain valid traceability references for persisted drafts.
+    requirement_ids.update(item.id for item in original_review.existing_acceptance_criteria)
+    risk_ids = {item.id for item in review_content.risks}
+    api_review = None
+    specification = None
+    api_ids: set[str] = set()
+    if test_set.api_contract_review_id:
+        api_review_row = get_api_contract_review(db, test_set.api_contract_review_id)
+        specification = get_api_specification(db, api_review_row.specification_id)
+        api_review = ApiContractReviewContent.model_validate(api_review_row.content)
+        _validate_api_review_content(api_review, specification)
+        api_ids = {item.id for item in api_review.findings}
+    _validate_suite_targets(content, review_content, api_review, requirement_ids)
+    for case in content.test_cases:
+        if [step.order for step in case.steps] != list(range(1, len(case.steps) + 1)):
+            raise AppError(
+                "invalid_test_case_steps",
+                f"{case.id} steps must be ordered sequentially starting at 1",
+                422,
+            )
+        unknown_requirements = set(case.requirement_traceability) - requirement_ids - risk_ids
+        unknown_api = set(case.api_traceability) - api_ids
+        if unknown_requirements or unknown_api:
+            raise AppError(
+                "invalid_test_case_traceability",
+                f"{case.id} references unknown requirement or API IDs",
+                422,
+                {"unknown_requirement_ids": sorted(unknown_requirements), "unknown_api_ids": sorted(unknown_api)},
+            )
+        if case.api_traceability:
+            findings = [item for item in api_review.findings if item.id in case.api_traceability] if api_review else []
+            if not findings or any(
+                (finding.method.upper(), finding.path) != (case.api_method.upper(), case.api_path)
+                for finding in findings
+                if case.api_method and case.api_path
+            ):
+                raise AppError("invalid_api_traceability", f"{case.id} API traceability does not match its operation", 422)
+            if case.api_method and case.api_path and specification:
+                operation = next((item for item in specification.operations if (item["method"], item["path"]) == (case.api_method.upper(), case.api_path)), None)
+                if not operation:
+                    raise AppError("invalid_api_operation", f"{case.id} references an unknown operation", 422)
+                declared = {int(code) for code in operation.get("responses", {}) if str(code).isdigit()}
+                if set(case.expected_status_codes) - declared:
+                    raise AppError("undocumented_status_code", f"{case.id} uses an undocumented response status", 422)
+
+
+def _prepare_generated_test_suite(
+    result: TestCaseSetContent,
+    review: RequirementReviewContent,
+    api_review: ApiContractReviewContent | None,
+    specification: ApiSpecification | None,
+    legacy_requirement_ids: set[str],
+) -> TestCaseSetContent:
+    if api_review:
+        result = _mark_incomplete_api_cases(result, api_review)
+    elif any(
+        case.api_traceability or case.api_method or case.api_path or case.api_request
+        for case in result.test_cases
+    ):
+        raise AIProviderError(
+            "Generated test cases contain API references without an approved API review",
+            provider_code="api_context_missing",
+        )
+    result = _normalize_coverage_matrix(result, review, api_review)
+    if specification and api_review:
+        findings = {finding.id: finding for finding in api_review.findings}
+        operations = {
+            (operation["method"], operation["path"]): operation
+            for operation in specification.operations
+        }
+        for case in result.test_cases:
+            if not case.api_traceability:
+                if case.api_method or case.api_path or case.api_request:
+                    raise AIProviderError(
+                        "Generated API test is missing approved API finding traceability",
+                        provider_code="invalid_api_traceability",
+                    )
+                continue
+            if not set(case.api_traceability).issubset(findings):
+                raise AIProviderError(
+                    "Generated API test references an API finding outside the approved review",
+                    provider_code="invalid_api_traceability",
+                )
+            if not all((case.api_method, case.api_path, case.api_request)):
+                if case.needs_clarification:
+                    continue
+                raise AIProviderError(
+                    "An API-linked test without request details must be marked needs_clarification",
+                    provider_code="incomplete_api_test_case",
+                )
+            operation = operations.get((case.api_method.upper(), case.api_path))
+            if not operation:
+                raise AIProviderError(
+                    "Generated API test references an operation outside the OpenAPI document",
+                    provider_code="invalid_api_operation",
+                )
+            if any(
+                findings[id_].method.upper() != case.api_method.upper()
+                or findings[id_].path != case.api_path
+                for id_ in case.api_traceability
+            ):
+                raise AIProviderError(
+                    "Generated API test traceability does not match its operation",
+                    provider_code="invalid_api_traceability",
+                )
+            declared = {
+                int(code)
+                for code in operation.get("responses", {})
+                if str(code).isdigit()
+            }
+            if set(case.expected_status_codes) - declared:
+                raise AIProviderError(
+                    "Generated API test uses an expected status code not declared by OpenAPI",
+                    provider_code="undocumented_status_code",
+                )
+    _validate_api_test_case_fields(result)
+    _validate_coverage_content(result)
+    try:
+        _validate_suite_targets(result, review, api_review, legacy_requirement_ids)
+    except AppError as exc:
+        raise AIProviderError(exc.message, provider_code=exc.code) from exc
+    return result
+
+
 async def generate_test_set(
     db: Session,
     story_id: str,
@@ -744,99 +1119,45 @@ async def generate_test_set(
         ):
             raise StaleVersionError()
         api_review_content = ApiContractReviewContent.model_validate(api_contract_review.content)
-        result = await ai.generate_test_cases(story, review_content, api_review_content)
+        result = await ai.generate_test_cases(story, review_content, api_review_content, api_specification)
     else:
         result = await ai.generate_test_cases(story, review_content)
     ai_original_content = result.model_dump(mode="json")
-    if api_review_content:
-        result = _mark_incomplete_api_cases(result, api_review_content)
-    elif any(
-        case.api_traceability or case.api_method or case.api_path or case.api_request
-        for case in result.test_cases
-    ):
-        raise AIProviderError(
-            "Generated test cases contain API references without an approved API review",
-            provider_code="api_context_missing",
-        )
-    result = _normalize_coverage_matrix(result, story, review_content, api_review_content)
-    if api_specification and api_review_content:
-        api_findings = {finding.id: finding for finding in api_review_content.findings}
-        api_finding_ids = set(api_findings)
-        operations = {
-            (operation["method"], operation["path"]): operation
-            for operation in api_specification.operations
-        }
-        for case in result.test_cases:
-            if not case.api_traceability:
-                if case.api_method or case.api_path or case.api_request:
-                    raise AIProviderError(
-                        "Generated API test is missing approved API finding traceability",
-                        provider_code="invalid_api_traceability",
-                    )
-                continue
-            if not set(case.api_traceability).issubset(api_finding_ids):
-                raise AIProviderError(
-                    "Generated API test references an API finding outside the approved review",
-                    provider_code="invalid_api_traceability",
-                )
-            if not all((case.api_method, case.api_path, case.api_request)):
-                if case.needs_clarification:
-                    continue
-                raise AIProviderError(
-                    "An API-linked test without request details must be marked needs_clarification",
-                    provider_code="incomplete_api_test_case",
-                )
-            operation = operations.get((case.api_method.upper(), case.api_path))
-            if not operation:
-                raise AIProviderError(
-                    "Generated API test references an operation outside the OpenAPI document",
-                    provider_code="invalid_api_operation",
-                )
-            if any(
-                api_findings[finding_id].method.upper() != case.api_method.upper()
-                or api_findings[finding_id].path != case.api_path
-                for finding_id in case.api_traceability
-            ):
-                raise AIProviderError(
-                    "Generated API test traceability does not match its operation",
-                    provider_code="invalid_api_traceability",
-                )
-            declared_statuses = {
-                int(code) for code in operation.get("responses", {}) if str(code).isdigit()
-            }
-            if set(case.expected_status_codes) - declared_statuses:
-                raise AIProviderError(
-                    "Generated API test uses an expected status code not declared by OpenAPI",
-                    provider_code="undocumented_status_code",
-                )
-    coverage = {
-        (entry.target_type, entry.target_id): entry for entry in result.coverage_matrix
+    original_review = RequirementReviewContent.model_validate(review.ai_original)
+    legacy_requirement_ids = {
+        item.id for item in original_review.existing_acceptance_criteria
     }
-    required_targets = {
-        (CoverageTargetType.acceptance_criterion, f"AC-{index:03d}")
-        for index, _ in enumerate(story.acceptance_criteria, start=1)
-    }
-    required_targets.update(
-        (CoverageTargetType.category, category)
-        for category in ("positive", "negative", "boundary", "integration")
-    )
-    if api_review_content:
-        required_targets.update(
-            (CoverageTargetType.api_check, finding.id)
-            for finding in api_review_content.findings
-        )
-    required_targets.update(
-        (CoverageTargetType.risk, risk.id)
-        for risk in review_content.risks
-        if risk.severity.value in {"high", "critical"}
-    )
-    if required_targets - coverage.keys():
-        raise AIProviderError(
-            "Generated test suite omitted required coverage targets",
-            provider_code="incomplete_coverage",
-        )
-    _validate_api_test_case_fields(result)
-    _validate_coverage_content(result)
+    for repair_attempt in range(2):
+        try:
+            result = _prepare_generated_test_suite(
+                result,
+                review_content,
+                api_review_content,
+                api_specification,
+                legacy_requirement_ids,
+            )
+            break
+        except AppError as exc:
+            if repair_attempt == 1 or not hasattr(ai, "repair_test_cases"):
+                raise AIProviderError(
+                    "Generated test suite failed application validation after one repair attempt",
+                    provider_code=exc.details.get("provider_code", exc.code),
+                ) from exc
+            issues = [
+                {
+                    "code": exc.details.get("provider_code", exc.code),
+                    "message": exc.message,
+                    "details": exc.details,
+                }
+            ]
+            result = await ai.repair_test_cases(
+                story,
+                review_content,
+                api_review_content,
+                api_specification,
+                result,
+                issues,
+            )
     test_set = TestCaseSet(
         story_id=story.id,
         review_id=review.id,
@@ -870,8 +1191,7 @@ def edit_test_set(db: Session, test_set_id: str, content: TestCaseSetContent) ->
     test_set = get_test_set(db, test_set_id)
     if test_set.stale:
         raise StaleVersionError()
-    _validate_api_test_case_fields(content)
-    _validate_coverage_content(content)
+    _validate_test_suite_context(db, test_set, content)
     test_set.content = content.model_dump(mode="json")
     test_set.status = "draft"
     test_set.approved_at = None
@@ -889,8 +1209,7 @@ def approve_test_set(db: Session, test_set_id: str) -> TestCaseSet:
     if review.status != "approved":
         raise ReviewNotApprovedError()
     approved_content = TestCaseSetContent.model_validate(test_set.content)
-    _validate_api_test_case_fields(approved_content)
-    _validate_coverage_content(approved_content)
+    _validate_test_suite_context(db, test_set, approved_content)
     current_api_spec = db.scalar(
         select(ApiSpecification)
         .where(ApiSpecification.story_id == story.id, ApiSpecification.stale.is_(False))

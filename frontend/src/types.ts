@@ -5,7 +5,8 @@ export type FindingClassification = 'requirement' | 'recommendation' | 'needs_cl
 export type ApiFindingType = 'positive' | 'negative' | 'boundary' | 'schema' | 'security' | 'gap' | 'conflict'
 
 export interface ReviewItem { id: string; title: string; detail: string; severity: Severity; source_reference: string; classification: FindingClassification }
-export interface ExistingCriterion { id: string; criterion: string; source_reference: string }
+export interface ExistingCriterion { id: string; criterion: string; source_reference: string; obligations: RequirementObligation[] }
+export interface RequirementObligation { id: string; text: string }
 export interface ReviewContent {
   language: 'vi' | 'en'; business_summary: string
   existing_acceptance_criteria: ExistingCriterion[]
@@ -19,7 +20,7 @@ export interface TestCase {
   requirement_traceability: string[]; api_traceability: string[]; api_method: string | null; api_path: string | null
   api_request: string | null; expected_status_codes: number[]; assumptions: string[]; needs_clarification: boolean
 }
-export interface CoverageEntry { target_type: 'acceptance_criterion' | 'risk' | 'category' | 'api_check'; target_id: string; status: 'covered' | 'needs_clarification'; test_case_ids: string[]; explanation: string }
+export interface CoverageEntry { target_type: 'acceptance_criterion' | 'requirement_obligation' | 'risk' | 'category' | 'api_check'; target_id: string; status: 'covered' | 'needs_clarification'; test_case_ids: string[]; explanation: string }
 export interface TestContent { language: 'vi' | 'en'; coverage_summary: string; test_cases: TestCase[]; coverage_matrix: CoverageEntry[] }
 export interface ApiOperation { operation_id: string; method: string; path: string; summary: string }
 export interface ApiSpecification {

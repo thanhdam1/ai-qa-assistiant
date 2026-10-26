@@ -1,0 +1,265 @@
+openapi: 3.1.0
+info:
+  title: Subscription Plan Change API
+  version: 1.0.0
+  description: API contract sample paired with subscription-change-story.md.
+servers:
+  - url: https://subscriptions.example.test/v1
+    description: Sample environment
+security:
+  - bearerAuth: []
+tags:
+  - name: Subscriptions
+  - name: Plans
+paths:
+  /subscriptions/{subscriptionId}:
+    parameters:
+      - $ref: '#/components/parameters/SubscriptionId'
+    get:
+      operationId: getSubscription
+      tags: [Subscriptions]
+      summary: Get a subscription and its current billing cycle
+      responses:
+        '200':
+          description: Subscription found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /plans/{planId}:
+    parameters:
+      - name: planId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getPlan
+      tags: [Plans]
+      summary: Get a plan from the catalog
+      responses:
+        '200':
+          description: Plan found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /subscriptions/{subscriptionId}/plan-changes:
+    parameters:
+      - $ref: '#/components/parameters/SubscriptionId'
+    post:
+      operationId: requestPlanChange
+      tags: [Subscriptions]
+      summary: Request a change to a subscription plan
+      description: >-
+        The endpoint accepts a target plan ID. The response reports the selected target plan
+        and its effective date. The business rule for incremental charges, payment failures,
+        duplicate submissions, and plans discontinued before a future effective date is not
+        defined by this API contract.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanChangeRequest'
+            examples:
+              changeTargetPlan:
+                summary: Request a plan change
+                value:
+                  target_plan_id: 7b19b732-1e0d-4ae2-9828-33ff117db985
+      responses:
+        '201':
+          description: Plan change request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanChange'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The request conflicts with the current subscription state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: The plan change could not currently be processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    SubscriptionId:
+      name: subscriptionId
+      in: path
+      required: true
+      description: UUID of the subscription to read or change
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    Plan:
+      type: object
+      additionalProperties: false
+      required: [id, name, monthly_price, currency, is_available]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        monthly_price:
+          type: number
+          minimum: 0
+          multipleOf: 0.01
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        is_available:
+          type: boolean
+    Subscription:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - status
+        - current_plan
+        - billing_cycle
+        - pending_plan_change
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, paused, cancelled, expired]
+        current_plan:
+          $ref: '#/components/schemas/Plan'
+        billing_cycle:
+          $ref: '#/components/schemas/BillingCycle'
+        pending_plan_change:
+          oneOf:
+            - $ref: '#/components/schemas/PlanChange'
+            - type: 'null'
+    BillingCycle:
+      type: object
+      additionalProperties: false
+      required: [starts_at, ends_at]
+      properties:
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+    PlanChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [target_plan_id]
+      properties:
+        target_plan_id:
+          type: string
+          format: uuid
+    PlanChange:
+      type: object
+      additionalProperties: false
+      required: [id, target_plan, status, effective_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        target_plan:
+          $ref: '#/components/schemas/Plan'
+        status:
+          type: string
+          enum: [scheduled, active]
+        effective_at:
+          type: string
+          format: date-time
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          minLength: 1
+        message:
+          type: string
+          minLength: 1
+        details:
+          type: object
+          additionalProperties: true
+  responses:
+    BadRequest:
+      description: The request could not be parsed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Authentication is required or invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: The caller is not allowed to access this resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: The requested resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    UnprocessableEntity:
+      description: One or more request fields are invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    InternalError:
+      description: An unexpected error occurred
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'

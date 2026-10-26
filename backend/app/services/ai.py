@@ -11,8 +11,10 @@ from app.models import ApiSpecification, Story
 from app.schemas import ApiContractReviewContent, RequirementReviewContent, TestCaseSetContent
 from app.services.prompts import (
     api_contract_review_input,
+    api_contract_review_repair_input,
     requirement_review_input,
     test_case_input,
+    test_case_repair_input,
 )
 
 logger = logging.getLogger(__name__)
@@ -82,11 +84,27 @@ class AIProvider(Protocol):
         self, story: Story, specification: ApiSpecification
     ) -> ApiContractReviewContent: ...
 
+    async def repair_api_contract_review(
+        self, story: Story, specification: ApiSpecification,
+        previous_output: ApiContractReviewContent, issues: list[dict]
+    ) -> ApiContractReviewContent: ...
+
     async def generate_test_cases(
         self,
         story: Story,
         review: RequirementReviewContent,
         api_review: ApiContractReviewContent | None = None,
+        specification: ApiSpecification | None = None,
+    ) -> TestCaseSetContent: ...
+
+    async def repair_test_cases(
+        self,
+        story: Story,
+        review: RequirementReviewContent,
+        api_review: ApiContractReviewContent | None,
+        specification: ApiSpecification | None,
+        previous_output: TestCaseSetContent,
+        issues: list[dict],
     ) -> TestCaseSetContent: ...
 
 
@@ -158,13 +176,35 @@ class OpenAIProvider:
             api_contract_review_input(story, specification), ApiContractReviewContent
         )
 
+    async def repair_api_contract_review(
+        self, story, specification, previous_output, issues
+    ) -> ApiContractReviewContent:
+        return await self._parse(
+            api_contract_review_repair_input(
+                story, specification, previous_output.model_dump(mode="json"), issues
+            ),
+            ApiContractReviewContent,
+        )
+
     async def generate_test_cases(
         self,
         story: Story,
         review: RequirementReviewContent,
         api_review: ApiContractReviewContent | None = None,
+        specification: ApiSpecification | None = None,
     ) -> TestCaseSetContent:
-        return await self._parse(test_case_input(story, review, api_review), TestCaseSetContent)
+        return await self._parse(test_case_input(story, review, api_review, specification), TestCaseSetContent)
+
+    async def repair_test_cases(
+        self, story, review, api_review, specification, previous_output, issues
+    ) -> TestCaseSetContent:
+        return await self._parse(
+            test_case_repair_input(
+                story, review, api_review, specification,
+                previous_output.model_dump(mode="json"), issues,
+            ),
+            TestCaseSetContent,
+        )
 
 
 class GeminiProvider:
@@ -328,13 +368,35 @@ class GeminiProvider:
             api_contract_review_input(story, specification), ApiContractReviewContent
         )
 
+    async def repair_api_contract_review(
+        self, story, specification, previous_output, issues
+    ) -> ApiContractReviewContent:
+        return await self._parse(
+            api_contract_review_repair_input(
+                story, specification, previous_output.model_dump(mode="json"), issues
+            ),
+            ApiContractReviewContent,
+        )
+
     async def generate_test_cases(
         self,
         story: Story,
         review: RequirementReviewContent,
         api_review: ApiContractReviewContent | None = None,
+        specification: ApiSpecification | None = None,
     ) -> TestCaseSetContent:
-        return await self._parse(test_case_input(story, review, api_review), TestCaseSetContent)
+        return await self._parse(test_case_input(story, review, api_review, specification), TestCaseSetContent)
+
+    async def repair_test_cases(
+        self, story, review, api_review, specification, previous_output, issues
+    ) -> TestCaseSetContent:
+        return await self._parse(
+            test_case_repair_input(
+                story, review, api_review, specification,
+                previous_output.model_dump(mode="json"), issues,
+            ),
+            TestCaseSetContent,
+        )
 
 
 def get_ai_provider() -> AIProvider:
