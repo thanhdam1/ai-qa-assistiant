@@ -54,7 +54,9 @@ def test_reference_siblings_follow_openapi_version_and_schema_context():
     }
     parsed = parse(document)
     assert parsed["responses"]["200"]["description"] == "overridden"
-    assert parsed["request_body"]["content"]["application/json"]["schema"]["minLength"] == 2
+    assert parsed["request_body"]["content"]["application/json"]["schema"] == {
+        "allOf": [{"type": "string"}, {"minLength": 2}]
+    }
 
     document["openapi"] = "3.0.3"
     parsed = parse(document)
@@ -76,3 +78,36 @@ def test_path_item_ref_merges_local_operations():
     assert set(by_id) == {"getOrder", "createOrder"}
     assert by_id["getOrder"]["source_reference"] == "#/components/pathItems/Order/get"
     assert by_id["createOrder"]["source_reference"] == "#/paths/~1orders~1{id}/post"
+
+
+def test_schema_reference_siblings_keep_both_constraints():
+    document = base()
+    document["components"] = {
+        "schemas": {
+            "Amount": {"type": "integer", "minimum": 10000},
+            "RequiredFields": {"type": "object", "required": ["walletId"]},
+            "AllowedValues": {"type": "string", "enum": ["active", "paused"]},
+            "Denied": False,
+        }
+    }
+    operation = document["paths"]["/orders/{id}"]["get"]
+    operation["responses"]["200"]["content"] = {
+        "application/json": {
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "amount": {"$ref": "#/components/schemas/Amount", "minimum": 1},
+                    "request": {"$ref": "#/components/schemas/RequiredFields", "required": ["currency"]},
+                    "state": {"$ref": "#/components/schemas/AllowedValues", "enum": ["active"]},
+                    "denied": {"$ref": "#/components/schemas/Denied", "type": "string"},
+                },
+            }
+        }
+    }
+    properties = parse(document)["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
+    assert properties["amount"] == {"allOf": [{"type": "integer", "minimum": 10000}, {"minimum": 1}]}
+    assert properties["request"]["allOf"][0]["required"] == ["walletId"]
+    assert properties["request"]["allOf"][1]["required"] == ["currency"]
+    assert properties["state"]["allOf"][0]["enum"] == ["active", "paused"]
+    assert properties["state"]["allOf"][1]["enum"] == ["active"]
+    assert properties["denied"] == {"allOf": [False, {"type": "string"}]}

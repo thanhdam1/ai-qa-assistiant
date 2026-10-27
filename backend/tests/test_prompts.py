@@ -1,6 +1,13 @@
+import json
+from types import SimpleNamespace
+
+import pytest
+
 from app.models import Story
 from app.services import prompts
-from types import SimpleNamespace
+from app.services.openapi_parser import parse_openapi
+from app.services.workflow import _normalize_requirement_ids
+from evals.api_contract_regressions import CASES, document_for
 
 
 def test_story_is_delimited_as_untrusted_data(review_content):
@@ -50,6 +57,27 @@ def test_test_case_prompt_receives_normalized_contract_and_stable_targets(review
     assert '"id": "AC-002"' not in messages[1]["content"]
 
 
+def test_valid_traceability_catalog_uses_approved_review_ids(review_content):
+    review = _normalize_requirement_ids(review_content)
+    api_review = SimpleNamespace(findings=[SimpleNamespace(id="API-001")])
+    catalog = prompts.valid_traceability_ids(review, api_review)
+    assert review.existing_acceptance_criteria[0].id in catalog["requirement_traceability"]
+    assert review.existing_acceptance_criteria[0].obligations[0].id in catalog["requirement_traceability"]
+    assert "RSK-001" in catalog["requirement_traceability"]
+    assert catalog["api_traceability"] == ["API-001"]
+
+
+def test_api_request_requires_matching_approved_finding(review_content):
+    story = Story(
+        title="Story", description="Create a redemption",
+        acceptance_criteria=[], dependencies=[], version=1,
+    )
+    instructions = prompts.test_case_input(story, review_content)[0]["content"]
+    assert "The reverse rule is equally mandatory" in instructions
+    assert "api_traceability MUST contain an approved" in instructions
+    assert "Merely calling an endpoint" in instructions
+
+
 def test_semantic_repair_prompts_treat_previous_output_as_data(review_content):
     story = Story(
         title="Order", description="Create order", acceptance_criteria=[], dependencies=[], version=1
@@ -68,3 +96,15 @@ def test_semantic_repair_prompts_treat_previous_output_as_data(review_content):
     assert "invalid_source_reference" in api_messages[-1]["content"]
     assert "UNTRUSTED DATA" in test_messages[-1]["content"]
     assert "invalid_api_traceability" in test_messages[-1]["content"]
+    assert "VALID TRACEABILITY IDS" in test_messages[-1]["content"]
+    assert "AC-001" in test_messages[-1]["content"]
+    assert "RSK-001" in test_messages[-1]["content"]
+    assert "unrelated ID" in test_messages[-1]["content"]
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda case: case["id"])
+def test_api_contract_behavioral_eval_fixture_is_parseable(case):
+    parsed = parse_openapi("fixture.json", json.dumps(document_for(case)).encode())
+    assert len(parsed.operations) == 1
+    assert parsed.operations[0]["operation_id"] == case["id"]
+    assert case["qa_check"]

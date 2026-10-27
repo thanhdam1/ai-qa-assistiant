@@ -18,7 +18,10 @@ class Settings(BaseSettings):
     ai_timeout_seconds: float = 90
     ai_max_retries: int = 2
     max_story_chars: int = 30_000
-    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
+    cors_origins: Annotated[list[str], NoDecode] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
 
     @field_validator("cors_origins", mode="before")
     @classmethod

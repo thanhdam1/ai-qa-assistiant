@@ -42,12 +42,16 @@ class ReviewItem(BaseModel):
 class RequirementObligation(BaseModel):
     id: str = Field(min_length=1, max_length=100)
     text: str = Field(min_length=1)
+    revision: int = Field(default=1, ge=1)
+    supersedes: list[str] = Field(default_factory=list)
 
 
 class ExistingCriterion(BaseModel):
     id: str = Field(min_length=1, max_length=80)
     criterion: str = Field(min_length=1)
     source_reference: str
+    source_id: str | None = None
+    revision: int = Field(default=1, ge=1)
     obligations: list[RequirementObligation] = Field(default_factory=list)
 
 
@@ -170,6 +174,14 @@ class TestCase(BaseModel):
     assumptions: list[str]
     needs_clarification: bool
 
+    @model_validator(mode="after")
+    def has_source_traceability(self) -> TestCase:
+        if not self.requirement_traceability and not self.api_traceability:
+            raise ValueError(
+                f"Test case {self.id} needs requirement_traceability or api_traceability"
+            )
+        return self
+
 class CoverageTargetType(str, Enum):
     acceptance_criterion = "acceptance_criterion"
     requirement_obligation = "requirement_obligation"
@@ -183,12 +195,20 @@ class CoverageStatus(str, Enum):
     needs_clarification = "needs_clarification"
 
 
+class CoverageAssertion(BaseModel):
+    test_case_id: str = Field(min_length=1)
+    assertion: str = Field(min_length=1)
+    verifies_business_outcome: bool
+
+
 class CoverageEntry(BaseModel):
     target_type: CoverageTargetType
     target_id: str = Field(min_length=1, max_length=120)
     status: CoverageStatus
     test_case_ids: list[str] = Field(default_factory=list)
     explanation: str = Field(min_length=1)
+    assertion_evidence: list[CoverageAssertion] = Field(default_factory=list)
+    unverified_aspects: list[str] = Field(default_factory=list)
 
 
 class TestCaseSetContent(BaseModel):
@@ -202,11 +222,6 @@ class TestCaseSetContent(BaseModel):
         case_ids = {case.id for case in self.test_cases}
         if len(case_ids) != len(self.test_cases):
             raise ValueError("Test case IDs must be unique")
-        if any(
-            not case.requirement_traceability and not case.api_traceability
-            for case in self.test_cases
-        ):
-            raise ValueError("Test cases need traceability to a requirement or API finding")
         return self
 
 
@@ -269,6 +284,29 @@ class TestCaseSetUpdate(BaseModel):
     content: TestCaseSetContent
 
 
+class CoverageDecisionInput(BaseModel):
+    target_type: CoverageTargetType
+    target_id: str = Field(min_length=1)
+    disposition: Literal["confirmed", "accepted_risk", "deferred", "blocked", "not_applicable"]
+    decided_by: str = Field(min_length=1, max_length=120)
+    assertion_case_id: str | None = None
+    assertion: str | None = None
+    reason: str | None = None
+    owner: str | None = None
+
+
+class CoverageAcceptanceInput(BaseModel):
+    accepted_by: str = Field(min_length=1, max_length=120)
+
+
+class CaseReadinessInput(BaseModel):
+    assessed_by: str = Field(min_length=1, max_length=120)
+    environment_ready: bool
+    test_data_ready: bool
+    verification_ready: bool
+    note: str | None = None
+
+
 class TestCaseSetRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -279,6 +317,19 @@ class TestCaseSetRead(BaseModel):
     ai_original: TestCaseSetContent
     content: TestCaseSetContent
     status: Literal["draft", "approved"]
+    review_status: Literal["draft", "approved"] = "draft"
+    coverage_status: Literal["complete", "partial", "unsubstantiated"] = "unsubstantiated"
+    coverage_acceptance_status: Literal["pending", "accepted"] = "pending"
+    execution_readiness: Literal["not_assessed", "partial", "ready"] = "not_assessed"
+    coverage_target_count: int = 0
+    candidate_coverage_count: int = 0
+    qa_confirmed_target_count: int = 0
+    gap_decision_count: int = 0
+    content_version: int = 1
+    coverage_decisions: list[dict] = Field(default_factory=list)
+    case_readiness: list[dict] = Field(default_factory=list)
+    coverage_accepted_at: datetime | None = None
+    coverage_accepted_by: str | None = None
     stale: bool
     model_name: str
     prompt_version: str
@@ -286,6 +337,64 @@ class TestCaseSetRead(BaseModel):
     approved_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def derive_assessment(self) -> TestCaseSetRead:
+        self.review_status = self.status
+        if self.stale:
+            self.coverage_acceptance_status = "pending"
+            self.coverage_status = "unsubstantiated"
+            self.execution_readiness = "not_assessed"
+            return self
+        targets = {
+            (row.target_type.value, row.target_id)
+            for row in self.content.coverage_matrix
+            if row.target_type != CoverageTargetType.category
+        }
+        self.coverage_target_count = len(targets)
+        candidates = {
+            (row.target_type.value, row.target_id)
+            for row in self.content.coverage_matrix
+            if row.target_type != CoverageTargetType.category
+            and row.status == CoverageStatus.covered
+            and row.assertion_evidence
+            and not row.unverified_aspects
+        }
+        self.candidate_coverage_count = len(candidates)
+        current = [
+            item for item in self.coverage_decisions
+            if item.get("story_version") == self.story_version
+            and item.get("review_id") == self.review_id
+            and item.get("api_contract_review_id") == self.api_contract_review_id
+            and item.get("api_specification_id") == self.generation_info.get("api_specification_id")
+            and item.get("content_version") == self.content_version
+            and (item.get("target_type"), item.get("target_id")) in targets
+        ]
+        confirmed = {
+            (item["target_type"], item["target_id"])
+            for item in current if item.get("disposition") == "confirmed"
+        }
+        self.qa_confirmed_target_count = len(confirmed)
+        self.gap_decision_count = len(current) - len(confirmed)
+        if targets and len(candidates) == len(targets):
+            self.coverage_status = "complete"
+        elif candidates:
+            self.coverage_status = "partial"
+        self.coverage_acceptance_status = "accepted" if self.coverage_accepted_at and len(current) == len(targets) else "pending"
+        case_ids = {case.id for case in self.content.test_cases}
+        ready = {
+            item.get("case_id") for item in self.case_readiness
+            if item.get("content_version") == self.content_version
+            and item.get("story_version") == self.story_version
+            and item.get("environment_ready") and item.get("test_data_ready") and item.get("verification_ready")
+        }
+        eligible = {case.id for case in self.content.test_cases if not case.needs_clarification}
+        ready &= eligible
+        if case_ids and ready == case_ids:
+            self.execution_readiness = "ready"
+        elif ready:
+            self.execution_readiness = "partial"
+        return self
 
 
 class StoryWorkspace(StoryRead):

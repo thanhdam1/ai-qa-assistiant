@@ -1,0 +1,247 @@
+openapi: 3.1.0
+info:
+  title: Voucher Redemption API Sample
+  version: 1.0.0
+  description: Contract mẫu đi cùng voucher-redemption-story.md; không có server thật.
+servers:
+  - url: https://voucher.example.test/v1
+security:
+  - bearerAuth: []
+paths:
+  /campaigns/{campaignId}:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    get:
+      operationId: getCampaign
+      summary: Xem chiến dịch voucher
+      responses:
+        '200':
+          description: Trả thông tin chiến dịch và số voucher khả dụng.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /points/me:
+    get:
+      operationId: getMyPoints
+      summary: Xem số dư điểm của khách hàng đã đăng nhập
+      responses:
+        '200':
+          description: Số dư điểm hiện tại.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [balance]
+                properties:
+                  balance:
+                    type: integer
+                    minimum: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /redemptions:
+    post:
+      operationId: createRedemption
+      summary: Đổi điểm lấy voucher
+      description: >-
+        Cấp mã qua Voucher Inventory trước khi hoàn tất redemption.
+        Contract không định nghĩa replay cùng Idempotency-Key hoặc cách xử lý timeout
+        sau khi nhà cung cấp có thể đã cấp mã.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Mã do client cung cấp; contract chưa định nghĩa bảo đảm xử lý trùng.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 80
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RedemptionRequest'
+            examples:
+              oneVoucher:
+                value:
+                  campaign_id: 1455a091-72ad-4a63-b647-76016061bfc1
+                  quantity: 1
+      responses:
+        '201':
+          description: Voucher đã được cấp, redemption đã hoàn tất và điểm đã được trừ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Redemption'
+        '400':
+          description: Request không đọc được; contract không gán mã này cho từng lỗi trường cụ thể.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Không tìm thấy chiến dịch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Không đủ điểm hoặc không đủ voucher khả dụng; điểm không đổi.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          description: Chiến dịch không active, đã hết hạn, hoặc quantity ngoài 1..5.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: Voucher Inventory từ chối cấp mã; điểm không đổi và redemption không thành công.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /redemptions/{redemptionId}:
+    parameters:
+      - name: redemptionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getRedemption
+      summary: Xem một redemption
+      responses:
+        '200':
+          description: Redemption thuộc khách hàng hiện tại.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Redemption'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Redemption thuộc khách hàng khác.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    CampaignId:
+      name: campaignId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    PositiveQuantity:
+      type: integer
+      minimum: 1
+    RedemptionRequest:
+      type: object
+      additionalProperties: false
+      required: [campaign_id, quantity]
+      properties:
+        campaign_id:
+          type: string
+          format: uuid
+        quantity:
+          $ref: '#/components/schemas/PositiveQuantity'
+          maximum: 5
+    Campaign:
+      type: object
+      additionalProperties: false
+      required: [id, status, points_per_voucher, available_quantity, expires_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, paused, closed]
+        points_per_voucher:
+          type: integer
+          minimum: 1
+        available_quantity:
+          type: integer
+          minimum: 0
+        expires_at:
+          type: string
+          format: date-time
+          description: UTC instant; campaign hết hạn đúng tại thời điểm này.
+    Redemption:
+      type: object
+      additionalProperties: false
+      required: [id, campaign_id, quantity, voucher_codes, points_spent, points_balance, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 5
+        voucher_codes:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            type: string
+            minLength: 1
+        points_spent:
+          type: integer
+          minimum: 1
+        points_balance:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [completed]
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+  responses:
+    Unauthorized:
+      description: Thiếu hoặc không hợp lệ bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Không tìm thấy tài nguyên.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'

@@ -126,10 +126,17 @@ def _resolve(
             return {"$ref": ref, "recursive_reference": True}
         target = _pointer_value(document, ref)
         resolved = _resolve(target, document, (*stack, ref), openapi_version, schema_context)
+        siblings = {key: item for key, item in value.items() if key != "$ref"}
+        if schema_context and openapi_version.startswith("3.1."):
+            if not isinstance(resolved, (dict, bool)):
+                raise ValueError(f"Schema reference must resolve to an object or boolean: {ref}")
+            if not siblings:
+                return resolved
+            resolved_siblings = _resolve(siblings, document, stack, openapi_version, True)
+            # JSON Schema applies referenced and adjacent constraints together. A dict
+            # merge would silently replace same-name constraints such as minimum/enum.
+            return {"allOf": [resolved, resolved_siblings]}
         if isinstance(resolved, dict):
-            siblings = {key: item for key, item in value.items() if key != "$ref"}
-            if schema_context and openapi_version.startswith("3.1."):
-                return resolved | _resolve(siblings, document, stack, openapi_version, True)
             if not schema_context and openapi_version.startswith("3.1."):
                 allowed = {key: item for key, item in siblings.items() if key in {"summary", "description"}}
                 return resolved | _resolve(allowed, document, stack, openapi_version, False)

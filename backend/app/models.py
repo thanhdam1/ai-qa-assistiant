@@ -174,6 +174,11 @@ class TestCaseSet(Base):
     model_name: Mapped[str] = mapped_column(String(100))
     prompt_version: Mapped[str] = mapped_column(String(32))
     generation_info: Mapped[dict] = mapped_column(JSON, default=dict)
+    content_version: Mapped[int] = mapped_column(Integer, default=1)
+    coverage_decisions: Mapped[list] = mapped_column(JSON, default=list)
+    case_readiness: Mapped[list] = mapped_column(JSON, default=list)
+    coverage_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    coverage_accepted_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(

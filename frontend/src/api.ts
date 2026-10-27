@@ -1,4 +1,4 @@
-import type { ApiContractReview, ApiContractReviewContent, ApiSpecification, Review, ReviewContent, Story, TestContent, TestSet, Workspace } from './types'
+import type { ApiContractReview, ApiContractReviewContent, ApiSpecification, CoverageDecision, CaseReadiness, Review, ReviewContent, Story, TestContent, TestSet, Workspace } from './types'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api'
 
@@ -41,6 +41,9 @@ export const api = {
   }),
   updateTests: (id: string, content: TestContent) => request<TestSet>(`/test-case-sets/${id}`, { method: 'PATCH', body: JSON.stringify({ content }) }),
   approveTests: (id: string) => request<TestSet>(`/test-case-sets/${id}/approve`, { method: 'POST', body: '{}' }),
+  decideCoverage: (id: string, body: Pick<CoverageDecision, 'target_type' | 'target_id' | 'disposition' | 'decided_by' | 'assertion_case_id' | 'assertion' | 'reason' | 'owner'>) => request<TestSet>(`/test-case-sets/${id}/coverage-decisions`, { method: 'PUT', body: JSON.stringify(body) }),
+  acceptCoverage: (id: string, accepted_by: string) => request<TestSet>(`/test-case-sets/${id}/coverage-accept`, { method: 'POST', body: JSON.stringify({ accepted_by }) }),
+  assessCaseReadiness: (id: string, caseId: string, body: Pick<CaseReadiness, 'assessed_by' | 'environment_ready' | 'test_data_ready' | 'verification_ready' | 'note'>) => request<TestSet>(`/test-case-sets/${id}/cases/${caseId}/readiness`, { method: 'PUT', body: JSON.stringify(body) }),
   exportUrl: (kind: 'requirement-reviews' | 'api-contract-reviews' | 'test-case-sets', id: string, format: 'json' | 'csv') => `${BASE}/${kind}/${id}/export?format=${format}`,
 }
 

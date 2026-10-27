@@ -25,8 +25,16 @@ class ReviewNotApprovedError(AppError):
 
 
 class AIProviderError(AppError):
-    def __init__(self, message: str, retryable: bool = False, provider_code: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        retryable: bool = False,
+        provider_code: str | None = None,
+        validation_details: dict | None = None,
+    ):
         details = {"retryable": retryable}
         if provider_code:
             details["provider_code"] = provider_code
+        if validation_details is not None:
+            details["validation"] = validation_details
         super().__init__("ai_provider_error", message, 503, details)

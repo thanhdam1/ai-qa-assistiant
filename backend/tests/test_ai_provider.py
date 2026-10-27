@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import httpx
@@ -6,8 +7,16 @@ from openai import APITimeoutError, RateLimitError
 
 from app.config import Settings
 from app.errors import AIProviderError
-from app.schemas import RequirementReviewContent
+from app.schemas import RequirementReviewContent, TestCaseSetContent as SuiteContent
 from app.services.ai import GeminiProvider, OpenAIProvider
+
+
+@pytest.fixture(autouse=True)
+def block_unmocked_provider_network(monkeypatch):
+    async def fail_send(*_args, **_kwargs):
+        raise AssertionError("Unit test attempted an unmocked HTTP request")
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fail_send)
 
 
 def config(**changes) -> Settings:
@@ -118,12 +127,12 @@ async def test_gemini_parses_structured_output_and_maps_developer_role(monkeypat
     provider = GeminiProvider(config())
     captured = {}
 
-    async def fake_parse(**kwargs):
+    async def fake_create(**kwargs):
         captured.update(kwargs)
-        message = SimpleNamespace(parsed=review_content)
+        message = SimpleNamespace(refusal=None, content=review_content.model_dump_json())
         return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
-    monkeypatch.setattr(provider.client.beta.chat.completions, "parse", fake_parse)
+    monkeypatch.setattr(provider.client.chat.completions, "create", fake_create)
     result = await provider._parse(
         [
             {"role": "developer", "content": "System instructions"},
@@ -134,3 +143,82 @@ async def test_gemini_parses_structured_output_and_maps_developer_role(monkeypat
     assert result.business_summary == review_content.business_summary
     assert captured["model"] == "gemini-3.5-flash-lite"
     assert captured["messages"][0]["role"] == "system"
+
+
+def test_gemini_mock_intercepts_create_without_network_or_event_loop(monkeypatch, review_content):
+    provider = GeminiProvider(config())
+    calls = []
+
+    async def fake_create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            refusal=None, content=review_content.model_dump_json(),
+        ))])
+
+    monkeypatch.setattr(provider.client.chat.completions, "create", fake_create)
+    operation = provider._parse([{"role": "developer", "content": "Review"}], RequirementReviewContent)
+    with pytest.raises(StopIteration) as finished:
+        operation.send(None)
+    assert finished.value.value.business_summary == review_content.business_summary
+    assert calls[0]["messages"][0]["role"] == "system"
+
+
+def test_gemini_traceability_repair_names_case_and_allowed_targets(monkeypatch, test_content):
+    provider = GeminiProvider(config())
+    invalid = test_content.model_dump(mode="json")
+    invalid["test_cases"][0]["requirement_traceability"] = []
+    invalid["test_cases"][0]["api_traceability"] = []
+    calls = []
+
+    async def fake_create(**kwargs):
+        calls.append(kwargs)
+        content = invalid if len(calls) == 1 else test_content.model_dump(mode="json")
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            refusal=None, content=json.dumps(content),
+        ))])
+
+    monkeypatch.setattr(provider.client.chat.completions, "create", fake_create)
+    operation = provider._parse(
+        [{"role": "developer", "content": "Design tests"}],
+        SuiteContent,
+        traceability_ids={
+            "requirement_traceability": ["AC-001", "RSK-001"],
+            "api_traceability": ["API-001"],
+        },
+    )
+    with pytest.raises(StopIteration) as finished:
+        operation.send(None)
+    assert finished.value.value.test_cases[0].id == "TC-001"
+    assert len(calls) == 2
+    repair_message = calls[1]["messages"][-1]["content"]
+    assert "TC-001" in repair_message
+    assert "test_cases.0" in repair_message
+    assert '"requirement_traceability": ["AC-001", "RSK-001"]' in repair_message
+    assert '"api_traceability": ["API-001"]' in repair_message
+    assert "unrelated ID" in repair_message
+
+
+def test_gemini_final_traceability_error_names_case_without_extra_retry(monkeypatch, test_content):
+    provider = GeminiProvider(config())
+    invalid = test_content.model_dump(mode="json")
+    invalid["test_cases"][1]["requirement_traceability"] = []
+    invalid["test_cases"][1]["api_traceability"] = []
+    calls = []
+
+    async def fake_create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            refusal=None, content=json.dumps(invalid),
+        ))])
+
+    monkeypatch.setattr(provider.client.chat.completions, "create", fake_create)
+    operation = provider._parse(
+        [{"role": "developer", "content": "Design tests"}],
+        SuiteContent,
+        traceability_ids={"requirement_traceability": ["AC-001"], "api_traceability": []},
+    )
+    with pytest.raises(AIProviderError) as failure:
+        operation.send(None)
+    assert "test_cases.1" in failure.value.message
+    assert "TC-002" in failure.value.message
+    assert len(calls) == 2

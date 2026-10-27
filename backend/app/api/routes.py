@@ -17,6 +17,9 @@ from app.schemas import (
     TestCaseSetCreate,
     TestCaseSetRead,
     TestCaseSetUpdate,
+    CoverageDecisionInput,
+    CoverageAcceptanceInput,
+    CaseReadinessInput,
 )
 from app.services.ai import AIProvider, get_ai_provider
 from app.services.export import api_contract_review_csv, json_bytes, review_csv, test_set_csv
@@ -24,6 +27,9 @@ from app.services.workflow import (
     approve_api_contract_review,
     approve_review,
     approve_test_set,
+    decide_coverage_target,
+    accept_coverage,
+    assess_case_readiness,
     create_api_specification,
     create_story,
     edit_api_contract_review,
@@ -185,6 +191,21 @@ def test_case_sets_approve(test_set_id: str, db: Db):
     return approve_test_set(db, test_set_id)
 
 
+@router.put("/test-case-sets/{test_set_id}/coverage-decisions", response_model=TestCaseSetRead)
+def test_case_sets_decide_coverage(test_set_id: str, payload: CoverageDecisionInput, db: Db):
+    return decide_coverage_target(db, test_set_id, payload)
+
+
+@router.post("/test-case-sets/{test_set_id}/coverage-accept", response_model=TestCaseSetRead)
+def test_case_sets_accept_coverage(test_set_id: str, payload: CoverageAcceptanceInput, db: Db):
+    return accept_coverage(db, test_set_id, payload)
+
+
+@router.put("/test-case-sets/{test_set_id}/cases/{case_id}/readiness", response_model=TestCaseSetRead)
+def test_case_sets_assess_readiness(test_set_id: str, case_id: str, payload: CaseReadinessInput, db: Db):
+    return assess_case_readiness(db, test_set_id, case_id, payload)
+
+
 @router.get("/test-case-sets/{test_set_id}/export")
 def test_case_sets_export(test_set_id: str, db: Db, format: Literal["json", "csv"] = Query("json")):
     test_set = get_test_set(db, test_set_id)
@@ -197,6 +218,3 @@ def test_case_sets_export(test_set_id: str, db: Db, format: Literal["json", "csv
             "Content-Disposition": f'attachment; filename="test-cases-{test_set.id}.{format}"'
         },
     )
-    create_api_specification,
-    edit_api_contract_review,
-    generate_api_contract_review,
