@@ -1,4 +1,18 @@
-import type { ApiContractReview, ApiContractReviewContent, ApiSpecification, CoverageDecision, CaseReadiness, Review, ReviewContent, Story, TestContent, TestSet, Workspace } from './types'
+import type {
+  ApiContractReview,
+  ApiContractReviewContent,
+  ApiSpecification,
+  CanonicalTestContract,
+  CaseReadiness,
+  CoverageDecision,
+  Review,
+  ReviewContent,
+  Story,
+  TestContent,
+  TestSet,
+  Workspace,
+  ZeroGapSuiteResponse,
+} from './types'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api'
 
@@ -44,6 +58,40 @@ export const api = {
   decideCoverage: (id: string, body: Pick<CoverageDecision, 'target_type' | 'target_id' | 'disposition' | 'decided_by' | 'assertion_case_id' | 'assertion' | 'reason' | 'owner'>) => request<TestSet>(`/test-case-sets/${id}/coverage-decisions`, { method: 'PUT', body: JSON.stringify(body) }),
   acceptCoverage: (id: string, accepted_by: string) => request<TestSet>(`/test-case-sets/${id}/coverage-accept`, { method: 'POST', body: JSON.stringify({ accepted_by }) }),
   assessCaseReadiness: (id: string, caseId: string, body: Pick<CaseReadiness, 'assessed_by' | 'environment_ready' | 'test_data_ready' | 'verification_ready' | 'note'>) => request<TestSet>(`/test-case-sets/${id}/cases/${caseId}/readiness`, { method: 'PUT', body: JSON.stringify(body) }),
-  exportUrl: (kind: 'requirement-reviews' | 'api-contract-reviews' | 'test-case-sets', id: string, format: 'json' | 'csv') => `${BASE}/${kind}/${id}/export?format=${format}`,
+  exportUrl: (kind: 'requirement-reviews' | 'api-contract-reviews' | 'test-case-sets', id: string, format: 'json' | 'csv' | 'xlsx') => `${BASE}/${kind}/${id}/export?format=${format}`,
+  getZeroGapContract: (storyId: string, sourceCode?: string) =>
+    request<CanonicalTestContract>(`/stories/${storyId}/zero-gap-contract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_code: sourceCode || null }),
+    }),
+  generateZeroGapSuite: (storyId: string, sourceCode?: string, existingFlaggedIds?: string[]) =>
+    request<ZeroGapSuiteResponse>(`/stories/${storyId}/zero-gap-suite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_code: sourceCode || null,
+        existing_flagged_ids: existingFlaggedIds || [],
+      }),
+    }),
+  exportZeroGapSuiteExcel: async (storyId: string, suite: ZeroGapSuiteResponse) => {
+    const res = await fetch(`${BASE}/stories/${storyId}/zero-gap-suite/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(suite),
+    })
+    if (!res.ok) {
+      throw new Error(`Xuất Excel thất bại: ${res.statusText}`)
+    }
+    const blob = await res.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `zero-gap-test-suite-${storyId.slice(0, 8)}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  },
 }
 

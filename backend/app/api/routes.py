@@ -1,7 +1,9 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Header, Query, Response, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
 
 from app.database import get_db
 from app.schemas import (
@@ -22,7 +24,14 @@ from app.schemas import (
     CaseReadinessInput,
 )
 from app.services.ai import AIProvider, get_ai_provider
-from app.services.export import api_contract_review_csv, json_bytes, review_csv, test_set_csv
+from app.services.export import (
+    api_contract_review_csv,
+    json_bytes,
+    review_csv,
+    test_set_csv,
+    test_set_excel,
+    zero_gap_suite_excel,
+)
 from app.services.workflow import (
     approve_api_contract_review,
     approve_review,
@@ -45,6 +54,12 @@ from app.services.workflow import (
     list_stories,
     update_story,
 )
+from app.schemas.zero_gap_contract import CanonicalTestContract, ZeroGapSuiteResponse
+from app.services.zero_gap_service import (
+    build_canonical_contract_for_story,
+    generate_zero_gap_suite_for_story,
+)
+
 
 router = APIRouter(prefix="/api")
 Db = Annotated[Session, Depends(get_db)]
@@ -207,14 +222,61 @@ def test_case_sets_assess_readiness(test_set_id: str, case_id: str, payload: Cas
 
 
 @router.get("/test-case-sets/{test_set_id}/export")
-def test_case_sets_export(test_set_id: str, db: Db, format: Literal["json", "csv"] = Query("json")):
+def test_case_sets_export(
+    test_set_id: str,
+    db: Db,
+    format: Literal["json", "csv", "xlsx"] = Query("xlsx"),
+):
     test_set = get_test_set(db, test_set_id)
-    body = json_bytes(test_set.content) if format == "json" else test_set_csv(test_set)
-    media = "application/json" if format == "json" else "text/csv; charset=utf-8"
+    if format == "json":
+        body = json_bytes(test_set.content)
+        media = "application/json"
+        ext = "json"
+    elif format == "csv":
+        body = test_set_csv(test_set)
+        media = "text/csv; charset=utf-8"
+        ext = "csv"
+    else:
+        body = test_set_excel(test_set)
+        media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ext = "xlsx"
     return Response(
         body,
         media_type=media,
         headers={
-            "Content-Disposition": f'attachment; filename="test-cases-{test_set.id}.{format}"'
+            "Content-Disposition": f'attachment; filename="test-cases-{test_set.id}.{ext}"'
         },
     )
+
+
+class ZeroGapPayload(BaseModel):
+    source_code: str | None = None
+    existing_flagged_ids: list[str] | None = None
+
+
+@router.post("/stories/{story_id}/zero-gap-contract", response_model=CanonicalTestContract)
+def stories_zero_gap_contract(story_id: str, db: Db, payload: ZeroGapPayload | None = None):
+    source_code = payload.source_code if payload else None
+    return build_canonical_contract_for_story(db, story_id, source_code)
+
+
+@router.post("/stories/{story_id}/zero-gap-suite", response_model=ZeroGapSuiteResponse)
+def stories_zero_gap_suite(story_id: str, db: Db, payload: ZeroGapPayload | None = None):
+    source_code = payload.source_code if payload else None
+    flagged = payload.existing_flagged_ids if payload else None
+    return generate_zero_gap_suite_for_story(db, story_id, source_code, flagged)
+
+
+@router.post("/stories/{story_id}/zero-gap-suite/export")
+def stories_zero_gap_suite_export(story_id: str, payload: ZeroGapSuiteResponse, db: Db):
+    story = get_story(db, story_id)
+    title = story.title if story else f"Story #{story_id}"
+    body = zero_gap_suite_excel(payload, story_title=title)
+    return Response(
+        body,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="zero-gap-suite-{story_id[:8]}.xlsx"'
+        },
+    )
+

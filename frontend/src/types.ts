@@ -66,3 +66,72 @@ export interface Workspace extends Story {
   reviews: Review[]; test_case_sets: TestSet[]; api_specifications: ApiSpecification[]; api_contract_reviews: ApiContractReview[]
 }
 
+// Zero-Gap v2.0 Architecture Types
+export type ResolutionStatus = 'covered_automated' | 'healed_by_delta' | 'needs_clarification' | 'accepted_risk' | 'deferred'
+
+export interface AtomicRequirement {
+  req_id: string
+  clause_text: string
+  source_ac: string
+}
+
+export interface BVAPartitionItem {
+  bva_id: string
+  endpoint: string
+  field_path: string
+  partition_type: string
+  test_value: any
+  expected_http_status: number
+}
+
+export interface ASTBranchNode {
+  branch_id: string
+  function_name: string
+  condition_expression: string
+  line_number: number
+}
+
+export interface CanonicalTestContract {
+  mode: string
+  requirements: AtomicRequirement[]
+  bva_matrix: BVAPartitionItem[]
+  ast_branches: ASTBranchNode[]
+  cyclomatic_complexity: number
+  spec_conflicts: string[]
+}
+
+export interface TestCaseSkeleton {
+  test_case_id: string
+  title: string
+  category: string
+  covered_req_ids: string[]
+  covered_bva_ids: string[]
+  covered_ast_ids: string[]
+}
+
+export interface DetailedTestCase extends TestCaseSkeleton {
+  priority: string
+  preconditions: string[]
+  test_steps: string[]
+  test_data_payload: Record<string, any>
+  expected_http_status: number
+  expected_result: string
+  resolution_status: ResolutionStatus
+}
+
+export interface GapForQA {
+  target_id: string
+  gap_type: string
+  reason: string
+  status: ResolutionStatus
+}
+
+export interface ZeroGapSuiteResponse {
+  effective_coverage_pct: number
+  verification_mode: string
+  retries_used: number
+  test_cases: DetailedTestCase[]
+  gaps_for_qa: GapForQA[]
+}
+
+

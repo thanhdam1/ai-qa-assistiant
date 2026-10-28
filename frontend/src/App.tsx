@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowUpRight, Braces, CheckCircle2, ChevronRight, ClipboardCheck, ClipboardList, Clock3, FilePlus2, History, ListChecks, Menu, Pencil, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowUpRight, Braces, CheckCircle2, ChevronRight, ClipboardCheck, ClipboardList, Clock3, FilePlus2, History, ListChecks, Menu, Pencil, RefreshCw, Search, ShieldCheck, Sparkles, Zap } from 'lucide-react'
 import { api, ApiError } from './api'
 import { ApiContractPanel, Button, Notice, ReviewPanel, StatusBadge, StoryForm } from './ReviewPanels'
 import { TestWorkbench } from './TestWorkbench'
+import { ZeroGapPanel } from './ZeroGapPanel'
 import { currentDecisions, hasDesignEvidence, isCaseReady } from './qaView'
 import type { Story, Workspace } from './types'
 
-type View = 'tests' | 'coverage' | 'requirements' | 'api' | 'history'
+type View = 'tests' | 'coverage' | 'zerogap' | 'requirements' | 'api' | 'history'
 const tabs = [
   { id: 'tests', label: 'Test cases', icon: ListChecks },
   { id: 'coverage', label: 'Coverage & bằng chứng', icon: ShieldCheck },
+  { id: 'zerogap', label: 'Zero-Gap v2.0 (100%)', icon: Zap },
   { id: 'requirements', label: 'Yêu cầu', icon: ClipboardList },
   { id: 'api', label: 'API contract', icon: Braces },
   { id: 'history', label: 'Lịch sử', icon: History },
@@ -125,6 +127,8 @@ export default function App() {
           {!latestReview ? <div className="empty-stage"><Sparkles size={32} /><h2>Review yêu cầu trước khi viết test</h2><p>AI phân tích story và đề xuất các câu hỏi cần xác nhận.</p><Button busy={busy === 'generate-review'} onClick={() => void run('generate-review', () => api.generateReview(workspace.id))}>Phân tích yêu cầu</Button></div> : <ReviewPanel key={latestReview.id} review={latestReview} sourceCriteria={workspace.acceptance_criteria} busy={busy} apiReviewId={approvedApiReview?.id} requiresApiReview={requiresApiReview} onSave={content => save('save-review', () => api.updateReview(latestReview.id, content))} onApprove={() => run('approve-review', () => api.approveReview(latestReview.id))} onGenerateTests={async () => { await run('generate-tests', () => api.generateTests(workspace.id, latestReview.id, approvedApiReview?.id)); setSelectedSuiteId(''); setView('tests') }} onRegenerate={() => run('generate-review', () => api.generateReview(workspace.id))} />}
         </>}
         {view === 'api' && <ApiContractPanel specs={workspace.api_specifications} reviews={workspace.api_contract_reviews} busy={busy} onUpload={file => run('upload-api', () => api.uploadApiSpecification(workspace.id, file))} onGenerate={id => run('generate-api-review', () => api.generateApiContractReview(id))} onSave={(id, content) => save('save-api-review', () => api.updateApiContractReview(id, content))} onApprove={id => run('approve-api-review', () => api.approveApiContractReview(id))} />}
+        {view === 'zerogap' && <ZeroGapPanel workspace={workspace} busy={busy} setBusy={setBusy} />}
+
         {view === 'history' && <section className="card history"><div className="workbench-heading"><div><h2>Lịch sử review & test suite</h2><p>Đối chiếu phiên bản nguồn và trạng thái phê duyệt.</p></div></div><div className="table-scroll"><table className="qa-table"><thead><tr><th>Loại</th><th>Story</th><th>Trạng thái</th><th>Thời gian tạo</th><th /></tr></thead><tbody>{history.map(item => <tr key={`${item.kind}-${item.id}`}><td>{item.kind}</td><td>v{item.story_version}</td><td><StatusBadge status={item.status} stale={item.stale} /></td><td>{new Date(item.created_at).toLocaleString('vi-VN')}</td><td>{item.kind === 'Test suite' && <button className="text-button" onClick={() => { setSelectedSuiteId(item.id); setView('tests') }}>Xem suite <ArrowUpRight size={15} /></button>}</td></tr>)}</tbody></table></div></section>}
       </>}
       <div className="workspace-footer"><span>QA Compass</span><span>Coverage thiết kế không thay thế kết quả thực thi.</span></div>

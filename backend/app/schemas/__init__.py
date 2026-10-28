@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Severity(str, Enum):
@@ -150,6 +150,13 @@ class TestStep(BaseModel):
     action: str = Field(min_length=1)
     expected_result: str = Field(min_length=1)
 
+    @field_validator("expected_result", mode="before")
+    @classmethod
+    def normalize_step_expected_result(cls, v: Any) -> Any:
+        if isinstance(v, list):
+            return "\n".join(str(item).strip() for item in v if str(item).strip())
+        return v
+
 
 class TestCase(BaseModel):
     id: str = Field(pattern=r"^TC-[A-Za-z0-9_-]+$")
@@ -173,6 +180,27 @@ class TestCase(BaseModel):
     expected_status_codes: list[int] = Field(default_factory=list)
     assumptions: list[str]
     needs_clarification: bool
+
+    @field_validator("expected_result", mode="before")
+    @classmethod
+    def normalize_case_expected_result(cls, v: Any) -> Any:
+        if isinstance(v, list):
+            return "\n".join(str(item).strip() for item in v if str(item).strip())
+        return v
+
+    @field_validator(
+        "preconditions",
+        "test_data",
+        "assumptions",
+        "requirement_traceability",
+        "api_traceability",
+        mode="before",
+    )
+    @classmethod
+    def normalize_lists(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return [line.strip() for line in v.splitlines() if line.strip()]
+        return v
 
     @model_validator(mode="after")
     def has_source_traceability(self) -> TestCase:
@@ -412,3 +440,5 @@ class ErrorBody(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorBody
+
+

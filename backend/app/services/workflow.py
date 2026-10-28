@@ -929,11 +929,22 @@ def _validate_coverage_content(content: TestCaseSetContent) -> None:
 
         for evidence in entry.assertion_evidence:
             case = cases.get(evidence.test_case_id)
-            if (
-                not case
-                or evidence.test_case_id not in entry.test_case_ids
-                or evidence.assertion not in [case.expected_result, *(step.expected_result for step in case.steps)]
-            ):
+            if not case or evidence.test_case_id not in entry.test_case_ids:
+                raise AppError(
+                    "invalid_coverage_evidence",
+                    f"Coverage evidence for {entry.target_id} must quote a linked test assertion",
+                    422,
+                )
+            candidates = [case.expected_result, *(step.expected_result for step in case.steps)]
+            norm_assertion = evidence.assertion.strip().lower()
+            is_matched = any(
+                norm_assertion == c.strip().lower()
+                or norm_assertion in c.lower()
+                or (len(c.strip()) > 5 and c.strip().lower() in norm_assertion)
+                for c in candidates
+                if c
+            )
+            if not is_matched:
                 raise AppError(
                     "invalid_coverage_evidence",
                     f"Coverage evidence for {entry.target_id} must quote a linked test assertion",

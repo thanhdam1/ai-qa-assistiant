@@ -1,0 +1,81 @@
+openapi: 3.0.3
+info:
+  title: Wallet Withdrawal API
+  description: API xử lý nghiệp vụ rút tiền từ ví điện tử về tài khoản ngân hàng liên kết
+  version: 1.0.0
+paths:
+  /api/v1/wallets/withdraw:
+    post:
+      summary: Rút tiền từ ví về tài khoản ngân hàng liên kết
+      operationId: process_wallet_withdrawal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - wallet_id
+                - bank_code
+                - bank_account_number
+                - amount
+                - auth_token
+              properties:
+                wallet_id:
+                  type: string
+                  format: uuid
+                  description: Định danh duy nhất của tài khoản ví
+                  example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                bank_code:
+                  type: string
+                  enum: [VCB, TCB, MB, VTB, ACB]
+                  description: Mã định danh ngân hàng nội địa
+                  example: "VCB"
+                bank_account_number:
+                  type: string
+                  pattern: '^[0-9]{8,20}$'
+                  description: Số tài khoản thụ hưởng tại ngân hàng (8-20 chữ số)
+                  example: "0123456789"
+                amount:
+                  type: integer
+                  minimum: 50000
+                  maximum: 50000000
+                  description: Số tiền rút (VND). Tối thiểu 50.000, tối đa 50.000.000
+                  example: 1000000
+                auth_token:
+                  type: string
+                  minLength: 6
+                  maxLength: 64
+                  description: Mã xác thực OTP hoặc Token Sinh trắc học
+                  example: "OTP_123456"
+      responses:
+        '200':
+          description: Rút tiền thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transaction_id:
+                    type: string
+                    example: "TXN-981247"
+                  status:
+                    type: string
+                    example: "SUCCESS"
+                  amount:
+                    type: integer
+                    example: 1000000
+                  fee:
+                    type: integer
+                    example: 3300
+                  remaining_balance:
+                    type: integer
+                    example: 4996700
+        '400':
+          description: Dữ liệu không hợp lệ hoặc vượt hạn mức giao dịch
+        '402':
+          description: Số dư khả dụng không đủ
+        '403':
+          description: Tài khoản ví bị khóa hoặc không hoạt động
+        '422':
+          description: Mã OTP / Sinh trắc học không chính xác hoặc hết hạn

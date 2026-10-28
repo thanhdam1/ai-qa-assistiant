@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, ArrowUpRight, Check, CheckCircle2, ChevronRight, Download, FileSearch, Filter, Link2, ListChecks, Pencil, Search, X } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, Check, CheckCircle2, ChevronRight, Download, FileSearch, FileSpreadsheet, Filter, Link2, ListChecks, Pencil, Search, X } from 'lucide-react'
 import { api } from './api'
 import { ReadinessRow, SuiteAssessment, TargetDecision } from './SuiteAssessment'
 import { currentDecisions, hasDesignEvidence, isCaseReady, targetDescription, targetLabels, typeLabels } from './qaView'
@@ -77,6 +77,7 @@ export function TestWorkbench({ testSet, workspace, view, busy, onViewChange, on
     <div className="workbench-heading">
       <div><h2>{view === 'tests' ? 'Test cases' : 'Coverage & bằng chứng'}</h2><p>{view === 'tests' ? 'Đọc kịch bản, đối chiếu nguồn và xác nhận điều kiện chạy.' : 'Kiểm tra assertion và quyết định xử lý từng khoảng trống.'}</p></div>
       <div className="toolbar-actions">
+        <a className="button button-ghost" href={api.exportUrl('test-case-sets', testSet.id, 'xlsx')}><FileSpreadsheet size={15} /> Xuất Excel</a>
         <a className="button button-ghost" href={api.exportUrl('test-case-sets', testSet.id, 'csv')}><Download size={15} /> CSV</a>
         <a className="button button-ghost" href={api.exportUrl('test-case-sets', testSet.id, 'json')}>JSON</a>
         <button className="button button-ghost" disabled={Boolean(busy) || testSet.stale} onClick={() => { setDraft(JSON.stringify(testSet.content, null, 2)); setEditing(true); setEditError('') }}><Pencil size={15} /> Chỉnh sửa</button>
