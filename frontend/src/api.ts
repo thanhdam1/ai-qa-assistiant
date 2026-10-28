@@ -14,7 +14,7 @@ import type {
   ZeroGapSuiteResponse,
 } from './types'
 
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api'
+const BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api').replace(/\/+$/, '')
 
 export class ApiError extends Error {
   constructor(public code: string, message: string, public details: unknown = {}) { super(message) }
