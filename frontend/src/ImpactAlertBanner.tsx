@@ -68,25 +68,31 @@ export function ImpactAlertBanner({
   }, [workspace.id, workspace.version, workspace.updated_at])
 
   // Check if this story has suspect_stale upstream dependencies
-  const upstreamImpacts = report?.upstream_impacts || []
+  const staleUpstreamImpacts = (report?.upstream_impacts || []).filter(
+    u => u.impact_status === 'suspect_stale' || u.impact_status === 'broken'
+  )
+
   const hasImpacts =
-    report?.has_impacted_dependencies ||
-    upstreamImpacts.length > 0 ||
+    staleUpstreamImpacts.length > 0 ||
     (workspace.upstream_dependencies || []).some(
-      d => d.impact_status === 'suspect_stale'
+      d => d.impact_status === 'suspect_stale' || d.impact_status === 'broken'
     )
 
   if (!hasImpacts || bannerDismissed) {
     return null
   }
 
-  const primaryImpact = upstreamImpacts[0]
-  const impactedCaseCount = upstreamImpacts.reduce(
+  const primaryImpact =
+    staleUpstreamImpacts[0] ||
+    (workspace.upstream_dependencies || []).find(
+      d => d.impact_status === 'suspect_stale'
+    )
+  const impactedCaseCount = staleUpstreamImpacts.reduce(
     (acc, cur) => acc + (cur.impacted_case_ids?.length || 0),
     0
   )
   const impactedCaseIds = Array.from(
-    new Set(upstreamImpacts.flatMap(u => u.impacted_case_ids || []))
+    new Set(staleUpstreamImpacts.flatMap(u => u.impacted_case_ids || []))
   )
 
   async function handleStartResync() {
@@ -261,7 +267,7 @@ export function ImpactAlertBanner({
             </div>
 
             <div className="impact-details-content">
-              {upstreamImpacts.map((imp, idx) => (
+              {staleUpstreamImpacts.map((imp, idx) => (
                 <div key={idx} className="impact-section-box">
                   <div className="impact-source-title">
                     <span className="pill-source">Thượng nguồn: {imp.source_story_title}</span>
