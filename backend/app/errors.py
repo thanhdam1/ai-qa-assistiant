@@ -19,6 +19,11 @@ class StaleVersionError(AppError):
         super().__init__("stale_version", "The source story or review is stale", 409)
 
 
+class CyclicDependencyError(AppError):
+    def __init__(self, message: str = "Cannot create circular dependency between stories"):
+        super().__init__("cyclic_dependency_detected", message, 409)
+
+
 class ReviewNotApprovedError(AppError):
     def __init__(self):
         super().__init__("review_not_approved", "A current approved review is required", 409)

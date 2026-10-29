@@ -16,6 +16,9 @@ from app.schemas import (
     StoryRead,
     StoryUpdate,
     StoryWorkspace,
+    StoryDependencyCreate,
+    StoryDependencyRead,
+    StoryDependencyTree,
     TestCaseSetCreate,
     TestCaseSetRead,
     TestCaseSetUpdate,
@@ -24,6 +27,11 @@ from app.schemas import (
     CaseReadinessInput,
 )
 from app.services.ai import AIProvider, get_ai_provider
+from app.services.dependency_graph import (
+    add_dependency,
+    get_dependency_tree,
+    remove_dependency,
+)
 from app.services.export import (
     api_contract_review_csv,
     json_bytes,
@@ -90,6 +98,34 @@ def stories_get(story_id: str, db: Db):
 @router.patch("/stories/{story_id}", response_model=StoryRead)
 def stories_update(story_id: str, payload: StoryUpdate, db: Db):
     return update_story(db, story_id, payload)
+
+
+@router.post(
+    "/stories/{story_id}/dependencies",
+    response_model=StoryDependencyRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def stories_add_dependency(story_id: str, payload: StoryDependencyCreate, db: Db):
+    return add_dependency(db, story_id, payload)
+
+
+@router.delete(
+    "/stories/{story_id}/dependencies/{target_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def stories_remove_dependency(story_id: str, target_id: str, db: Db):
+    remove_dependency(db, story_id, target_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/stories/{story_id}/dependency-tree",
+    response_model=StoryDependencyTree,
+)
+def stories_get_dependency_tree(
+    story_id: str, db: Db, max_depth: int | None = Query(None, ge=1)
+):
+    return get_dependency_tree(db, story_id, max_depth=max_depth)
 
 
 @router.post(

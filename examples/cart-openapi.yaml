@@ -1,0 +1,105 @@
+openapi: 3.0.3
+info:
+  title: Cart Service API
+  version: 1.0.0
+  description: API quản lý giỏ hàng và đặt hàng cho khách mua sắm trực tuyến
+paths:
+  /api/cart/items:
+    post:
+      operationId: addCartItem
+      summary: Thêm sản phẩm vào giỏ hàng
+      description: Thêm một sản phẩm mới hoặc cập nhật số lượng sản phẩm trong giỏ hàng hiện tại
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - product_id
+                - quantity
+              properties:
+                product_id:
+                  type: string
+                  description: Mã định danh sản phẩm
+                  example: PRD-BAN-TRA-01
+                quantity:
+                  type: integer
+                  description: Số lượng sản phẩm muốn thêm vào giỏ (tối thiểu 1, tối đa 10)
+                  minimum: 1
+                  maximum: 10
+                  example: 2
+      responses:
+        '200':
+          description: Thêm vào giỏ hàng thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    example: ADDED_SUCCESS
+                  message:
+                    type: string
+                    example: Thêm sản phẩm vào giỏ hàng thành công
+                  cart:
+                    type: object
+                    properties:
+                      product_id:
+                        type: string
+                        example: PRD-BAN-TRA-01
+                      quantity:
+                        type: integer
+                        example: 2
+                      total_items:
+                        type: integer
+                        example: 2
+        '400':
+          description: Số lượng yêu cầu không hợp lệ (nhỏ hơn 1 hoặc lớn hơn 10)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        example: INVALID_QUANTITY
+                      message:
+                        type: string
+                        example: Số lượng phải từ 1 đến 10
+        '404':
+          description: Không tìm thấy sản phẩm trong hệ thống
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        example: PRODUCT_NOT_FOUND
+                      message:
+                        type: string
+                        example: Mã sản phẩm không tồn tại
+        '422':
+          description: Số lượng trong kho không đủ đáp ứng yêu cầu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        example: OUT_OF_STOCK
+                      message:
+                        type: string
+                        example: Sản phẩm không đủ tồn kho

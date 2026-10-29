@@ -63,6 +63,18 @@ class Story(Base):
         cascade="all, delete-orphan",
         order_by="ApiContractReview.created_at.desc()",
     )
+    downstream_dependencies: Mapped[list[StoryDependency]] = relationship(
+        "StoryDependency",
+        foreign_keys="StoryDependency.source_story_id",
+        back_populates="source_story",
+        cascade="all, delete-orphan",
+    )
+    upstream_dependencies: Mapped[list[StoryDependency]] = relationship(
+        "StoryDependency",
+        foreign_keys="StoryDependency.target_story_id",
+        back_populates="target_story",
+        cascade="all, delete-orphan",
+    )
 
 
 class ApiSpecification(Base):
@@ -189,4 +201,38 @@ class TestCaseSet(Base):
     review: Mapped[RequirementReview] = relationship(back_populates="test_case_sets")
     api_contract_review: Mapped[ApiContractReview | None] = relationship(
         back_populates="test_case_sets"
+    )
+
+
+class StoryDependency(Base):
+    __tablename__ = "story_dependencies"
+    __table_args__ = (
+        UniqueConstraint("source_story_id", "target_story_id", name="uq_story_edge"),
+        Index("ix_story_dep_source", "source_story_id"),
+        Index("ix_story_dep_target", "target_story_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    source_story_id: Mapped[str] = mapped_column(ForeignKey("stories.id", ondelete="CASCADE"))
+    target_story_id: Mapped[str] = mapped_column(ForeignKey("stories.id", ondelete="CASCADE"))
+    dependency_type: Mapped[str] = mapped_column(String(32), default="precondition")
+
+    synced_source_version: Mapped[int] = mapped_column(Integer, default=1)
+    target_story_version: Mapped[int] = mapped_column(Integer, default=1)
+
+    binding_contract: Mapped[dict] = mapped_column(JSON, default=dict)
+    impact_status: Mapped[str] = mapped_column(String(32), default="synced")
+    stale_reason: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    impacted_case_ids: Mapped[list] = mapped_column(JSON, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    source_story: Mapped[Story] = relationship(
+        "Story", foreign_keys=[source_story_id], back_populates="downstream_dependencies"
+    )
+    target_story: Mapped[Story] = relationship(
+        "Story", foreign_keys=[target_story_id], back_populates="upstream_dependencies"
     )

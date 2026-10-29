@@ -50,6 +50,8 @@ def get_story(db: Session, story_id: str, with_history: bool = False) -> Story:
             selectinload(Story.test_case_sets),
             selectinload(Story.api_specifications),
             selectinload(Story.api_contract_reviews),
+            selectinload(Story.upstream_dependencies),
+            selectinload(Story.downstream_dependencies),
         )
     story = db.scalar(query)
     if not story:

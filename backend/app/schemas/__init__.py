@@ -425,11 +425,73 @@ class TestCaseSetRead(BaseModel):
         return self
 
 
+class DependencyType(str, Enum):
+    precondition = "precondition"
+    data_fixture = "data_fixture"
+    api_contract = "api_contract"
+
+
+class ImpactStatus(str, Enum):
+    synced = "synced"
+    suspect_stale = "suspect_stale"
+    broken = "broken"
+
+
+class BindingContract(BaseModel):
+    consumed_outputs: list[str] = Field(default_factory=list)
+    bound_rules: list[str] = Field(default_factory=list)
+    data_mappings: dict[str, str] = Field(default_factory=dict)
+
+
+class StoryDependencyCreate(BaseModel):
+    target_story_id: str = Field(min_length=1, max_length=36, description="ID của Story hạ nguồn")
+    dependency_type: DependencyType = Field(default=DependencyType.precondition)
+    binding_contract: BindingContract = Field(default_factory=BindingContract)
+
+
+class StoryDependencyRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    source_story_id: str
+    target_story_id: str
+    dependency_type: str
+    synced_source_version: int
+    target_story_version: int
+    binding_contract: dict
+    impact_status: str
+    stale_reason: dict | None = None
+    impacted_case_ids: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class DependencyNode(BaseModel):
+    id: str
+    title: str
+    version: int
+    dependency_type: str
+    impact_status: str
+    synced_source_version: int | None = None
+    current_source_version: int | None = None
+    stale_reason: dict | None = None
+    impacted_case_ids: list[str] = Field(default_factory=list)
+
+
+class StoryDependencyTree(BaseModel):
+    story_id: str
+    story_title: str
+    story_version: int
+    upstream: list[DependencyNode] = Field(default_factory=list)
+    downstream: list[DependencyNode] = Field(default_factory=list)
+
+
 class StoryWorkspace(StoryRead):
     reviews: list[RequirementReviewRead]
     test_case_sets: list[TestCaseSetRead]
     api_specifications: list[ApiSpecificationRead] = Field(default_factory=list)
     api_contract_reviews: list[ApiContractReviewRead] = Field(default_factory=list)
+    upstream_dependencies: list[StoryDependencyRead] = Field(default_factory=list)
+    downstream_dependencies: list[StoryDependencyRead] = Field(default_factory=list)
 
 
 class ErrorBody(BaseModel):

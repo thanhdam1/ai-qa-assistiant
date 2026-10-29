@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from app.database import Base, SessionLocal, engine, get_db
 from app.main import app
 from app.schemas import (
+    ApiContractReviewContent,
+    ApiOperationSummary,
     ExistingCriterion,
     RequirementReviewContent,
     ReviewItem,
@@ -86,8 +88,25 @@ def client(review_content, test_content):
         async def review_requirements(self, _story):
             return review_content
 
-        async def generate_test_cases(self, _story, _review):
+        async def generate_test_cases(self, _story, _review, _api_review=None, _specification=None):
             return test_content
+
+        async def review_api_contract(self, _story, specification):
+            ops = [
+                ApiOperationSummary(
+                    operation_id=op["operation_id"],
+                    method=op["method"],
+                    path=op["path"],
+                    summary=op.get("summary", ""),
+                )
+                for op in specification.operations
+            ]
+            return ApiContractReviewContent(
+                language="vi",
+                summary="API review summary",
+                operations=ops,
+                findings=[],
+            )
 
     def db_override():
         db = SessionLocal()
