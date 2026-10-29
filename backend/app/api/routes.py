@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Header, Query, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Header, Query, Response, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,9 @@ from app.schemas import (
     ApiContractReviewContent,
     ApiContractReviewRead,
     ApiSpecificationRead,
+    AsyncJobRead,
+    ReSyncJobResponse,
+    ResolveConflictPayload,
     RequirementReviewRead,
     ReviewUpdate,
     StoryCreate,
@@ -33,6 +36,11 @@ from app.services.dependency_graph import (
     analyze_story_impact,
     get_dependency_tree,
     remove_dependency,
+)
+from app.services.resync_engine import (
+    get_async_job,
+    resolve_merge_conflict,
+    trigger_resync_job,
 )
 from app.services.export import (
     api_contract_review_csv,
@@ -325,4 +333,37 @@ def stories_zero_gap_suite_export(story_id: str, payload: ZeroGapSuiteResponse, 
             "Content-Disposition": f'attachment; filename="zero-gap-suite-{story_id[:8]}.xlsx"'
         },
     )
+
+
+@router.post(
+    "/stories/{story_id}/re-sync-dependencies",
+    response_model=ReSyncJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def stories_resync_dependencies(
+    story_id: str,
+    background_tasks: BackgroundTasks,
+    db: Db,
+):
+    job = trigger_resync_job(db, story_id, background_tasks)
+    return ReSyncJobResponse(
+        job_id=job.id,
+        status=job.status,
+        message="Re-sync job initiated in background",
+    )
+
+
+@router.get("/jobs/{job_id}", response_model=AsyncJobRead)
+def jobs_get_status(job_id: str, db: Db):
+    return get_async_job(db, job_id)
+
+
+@router.post("/stories/{story_id}/resolve-conflict")
+def stories_resolve_conflict(
+    story_id: str,
+    payload: ResolveConflictPayload,
+    db: Db,
+):
+    return resolve_merge_conflict(db, story_id, payload.case_id, payload.action.value)
+
 

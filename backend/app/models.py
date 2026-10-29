@@ -236,3 +236,24 @@ class StoryDependency(Base):
     target_story: Mapped[Story] = relationship(
         "Story", foreign_keys=[target_story_id], back_populates="upstream_dependencies"
     )
+
+
+class AsyncJob(Base):
+    __tablename__ = "async_jobs"
+    __table_args__ = (
+        Index("ix_async_jobs_story_id", "story_id"),
+        Index("ix_async_jobs_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    job_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    story_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+

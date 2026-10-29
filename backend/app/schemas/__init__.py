@@ -180,6 +180,7 @@ class TestCase(BaseModel):
     expected_status_codes: list[int] = Field(default_factory=list)
     assumptions: list[str]
     needs_clarification: bool
+    is_customized: bool = False
 
     @field_validator("expected_result", mode="before")
     @classmethod
@@ -521,6 +522,44 @@ class StoryWorkspace(StoryRead):
     api_contract_reviews: list[ApiContractReviewRead] = Field(default_factory=list)
     upstream_dependencies: list[StoryDependencyRead] = Field(default_factory=list)
     downstream_dependencies: list[StoryDependencyRead] = Field(default_factory=list)
+
+
+class AsyncJobRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    job_type: str
+    story_id: str | None = None
+    status: str
+    progress: int = 0
+    result: dict | None = None
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReSyncJobResponse(BaseModel):
+    job_id: str
+    status: str = "processing"
+    message: str = "Re-sync job initiated in background"
+
+
+class MergeConflictItem(BaseModel):
+    case_id: str
+    title: str
+    qa_version: dict
+    ai_proposal: dict
+    conflict_fields: list[str] = Field(default_factory=list)
+
+
+class ConflictResolutionAction(str, Enum):
+    keep_qa = "keep_qa"
+    apply_ai = "apply_ai"
+
+
+class ResolveConflictPayload(BaseModel):
+    case_id: str
+    action: ConflictResolutionAction
 
 
 class ErrorBody(BaseModel):
