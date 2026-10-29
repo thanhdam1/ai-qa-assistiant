@@ -485,6 +485,35 @@ class StoryDependencyTree(BaseModel):
     downstream: list[DependencyNode] = Field(default_factory=list)
 
 
+class ImpactedCaseDetail(BaseModel):
+    case_id: str
+    title: str
+    reason: str
+
+
+class ImpactReportItem(BaseModel):
+    dependency_id: str
+    source_story_id: str
+    source_story_title: str
+    target_story_id: str
+    target_story_title: str
+    synced_source_version: int
+    current_source_version: int
+    impact_status: str
+    stale_reason: dict | None = None
+    impacted_case_ids: list[str] = Field(default_factory=list)
+    impacted_cases: list[ImpactedCaseDetail] = Field(default_factory=list)
+
+
+class StoryImpactAnalysisReport(BaseModel):
+    story_id: str
+    story_title: str
+    story_version: int
+    has_impacted_dependencies: bool
+    upstream_impacts: list[ImpactReportItem] = Field(default_factory=list)
+    downstream_impacts: list[ImpactReportItem] = Field(default_factory=list)
+
+
 class StoryWorkspace(StoryRead):
     reviews: list[RequirementReviewRead]
     test_case_sets: list[TestCaseSetRead]

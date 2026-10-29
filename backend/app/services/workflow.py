@@ -523,6 +523,12 @@ def update_story(db: Session, story_id: str, payload: StoryUpdate) -> Story:
     changed = any(getattr(story, key) != value for key, value in changes.items())
     if not changed:
         return story
+    old_state = {
+        "title": story.title,
+        "description": story.description,
+        "acceptance_criteria": list(story.acceptance_criteria or []),
+        "business_context": story.business_context,
+    }
     for key, value in changes.items():
         setattr(story, key, value)
     story.version += 1
@@ -531,6 +537,8 @@ def update_story(db: Session, story_id: str, payload: StoryUpdate) -> Story:
     )
     db.execute(update(TestCaseSet).where(TestCaseSet.story_id == story.id).values(stale=True))
     db.execute(update(ApiContractReview).where(ApiContractReview.story_id == story.id).values(stale=True))
+    from app.services.dependency_graph import propagate_story_impact
+    propagate_story_impact(db, story, old_state, changes)
     db.commit()
     db.refresh(story)
     return story

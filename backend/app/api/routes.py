@@ -19,6 +19,7 @@ from app.schemas import (
     StoryDependencyCreate,
     StoryDependencyRead,
     StoryDependencyTree,
+    StoryImpactAnalysisReport,
     TestCaseSetCreate,
     TestCaseSetRead,
     TestCaseSetUpdate,
@@ -29,6 +30,7 @@ from app.schemas import (
 from app.services.ai import AIProvider, get_ai_provider
 from app.services.dependency_graph import (
     add_dependency,
+    analyze_story_impact,
     get_dependency_tree,
     remove_dependency,
 )
@@ -126,6 +128,14 @@ def stories_get_dependency_tree(
     story_id: str, db: Db, max_depth: int | None = Query(None, ge=1)
 ):
     return get_dependency_tree(db, story_id, max_depth=max_depth)
+
+
+@router.get(
+    "/stories/{story_id}/impact-analysis",
+    response_model=StoryImpactAnalysisReport,
+)
+def stories_get_impact_analysis(story_id: str, db: Db):
+    return analyze_story_impact(db, story_id)
 
 
 @router.post(
