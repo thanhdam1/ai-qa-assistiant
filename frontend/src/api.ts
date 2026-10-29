@@ -2,12 +2,16 @@ import type {
   ApiContractReview,
   ApiContractReviewContent,
   ApiSpecification,
+  AsyncJob,
   CanonicalTestContract,
   CaseReadiness,
   CoverageDecision,
   Review,
   ReviewContent,
   Story,
+  StoryDependency,
+  StoryDependencyTree,
+  StoryImpactAnalysisReport,
   TestContent,
   TestSet,
   Workspace,
@@ -93,5 +97,39 @@ export const api = {
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
   },
+  getDependencyTree: (storyId: string, maxDepth: string = 'all') =>
+    request<StoryDependencyTree>(`/stories/${storyId}/dependency-tree?max_depth=${maxDepth}`),
+  addDependency: (
+    storyId: string,
+    body: {
+      target_story_id: string
+      dependency_type: string
+      binding_contract: { consumed_outputs?: string[]; bound_rules?: string[] }
+    }
+  ) =>
+    request<StoryDependency>(`/stories/${storyId}/dependencies`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  removeDependency: (storyId: string, targetStoryId: string) =>
+    request<{ success: boolean }>(`/stories/${storyId}/dependencies/${targetStoryId}`, {
+      method: 'DELETE',
+    }),
+  getImpactAnalysis: (storyId: string) =>
+    request<StoryImpactAnalysisReport>(`/stories/${storyId}/impact-analysis`),
+  reSyncDependencies: (storyId: string) =>
+    request<{ job_id: string; status: string; message: string }>(
+      `/stories/${storyId}/re-sync-dependencies`,
+      { method: 'POST' }
+    ),
+  getJobStatus: (jobId: string) => request<AsyncJob>(`/jobs/${jobId}`),
+  resolveConflict: (
+    storyId: string,
+    body: { case_id: string; action: 'keep_qa' | 'apply_ai' }
+  ) =>
+    request<{ story_id: string; case_id: string; action: string; status: string }>(
+      `/stories/${storyId}/resolve-conflict`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
 }
 

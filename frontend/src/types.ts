@@ -19,6 +19,7 @@ export interface TestCase {
   preconditions: string[]; test_data: string[]; steps: TestStep[]; expected_result: string
   requirement_traceability: string[]; api_traceability: string[]; api_method: string | null; api_path: string | null
   api_request: string | null; expected_status_codes: number[]; assumptions: string[]; needs_clarification: boolean
+  is_customized?: boolean
 }
 export interface CoverageAssertion { test_case_id: string; assertion: string; verifies_business_outcome: boolean }
 export interface CoverageEntry { target_type: 'acceptance_criterion' | 'requirement_obligation' | 'risk' | 'category' | 'api_check'; target_id: string; status: 'covered' | 'needs_clarification'; test_case_ids: string[]; explanation: string; assertion_evidence?: CoverageAssertion[]; unverified_aspects?: string[] }
@@ -62,8 +63,119 @@ export interface Story {
   id: string; title: string; description: string; acceptance_criteria: string[]; business_context: string | null
   dependencies: string[]; language: 'auto' | 'vi' | 'en'; version: number; created_at: string; updated_at: string
 }
+export interface StoryDependency {
+  id: string
+  source_story_id: string
+  target_story_id: string
+  dependency_type: 'precondition' | 'data_fixture' | 'schema_contract' | string
+  synced_source_version: number
+  target_story_version: number
+  binding_contract: {
+    consumed_outputs?: string[]
+    bound_rules?: string[]
+  }
+  impact_status: 'synced' | 'suspect_stale' | 'broken' | string
+  stale_reason?: {
+    summary?: string
+    reason?: string
+    delta_summary?: string
+    upstream_version?: number
+    matched_tokens?: string[]
+    [key: string]: any
+  } | null
+  impacted_case_ids: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface DependencyNode {
+  id: string
+  title: string
+  version: number
+  dependency_type: string
+  impact_status: string
+  synced_source_version: number
+  current_source_version: number
+  stale_reason?: any
+  impacted_case_ids: string[]
+}
+
+export interface StoryDependencyTree {
+  story_id: string
+  story_title: string
+  story_version: number
+  upstream: DependencyNode[]
+  downstream: DependencyNode[]
+}
+
+export interface ImpactedCaseDetail {
+  case_id: string
+  title: string
+  reason: string
+}
+
+export interface ImpactReportItem {
+  dependency_id: string
+  source_story_id: string
+  source_story_title: string
+  target_story_id: string
+  target_story_title: string
+  synced_source_version: number
+  current_source_version: number
+  impact_status: string
+  stale_reason?: any
+  impacted_case_ids: string[]
+  impacted_cases: ImpactedCaseDetail[]
+}
+
+export interface StoryImpactAnalysisReport {
+  story_id: string
+  story_title: string
+  story_version: number
+  has_impacted_dependencies: boolean
+  upstream_impacts: ImpactReportItem[]
+  downstream_impacts: ImpactReportItem[]
+}
+
+export interface MergeConflictItem {
+  case_id: string
+  title: string
+  qa_version: {
+    expected_result: string
+    steps: any[]
+    test_data: string[]
+  }
+  ai_proposal: {
+    expected_result: string
+    steps: any[]
+    test_data: string[]
+  }
+  conflict_fields: string[]
+}
+
+export interface AsyncJob {
+  id: string
+  job_type: string
+  story_id?: string | null
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  progress: number
+  result?: {
+    story_id?: string
+    updated_cases?: string[]
+    preserved_cases?: string[]
+    conflicts?: MergeConflictItem[]
+    synced_dependencies?: string[]
+    [key: string]: any
+  } | null
+  error_message?: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Workspace extends Story {
   reviews: Review[]; test_case_sets: TestSet[]; api_specifications: ApiSpecification[]; api_contract_reviews: ApiContractReview[]
+  upstream_dependencies?: StoryDependency[]
+  downstream_dependencies?: StoryDependency[]
 }
 
 // Zero-Gap v2.0 Architecture Types

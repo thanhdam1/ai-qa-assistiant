@@ -14,4 +14,14 @@ describe('API client', () => {
     expect(error.code).toBe('stale_version')
     expect(error.details).toEqual({ version: 2 })
   })
+
+  it('exposes Milestone 4 Cross-Story Impact & 3-Way Merge API methods', () => {
+    expect(typeof api.getDependencyTree).toBe('function')
+    expect(typeof api.addDependency).toBe('function')
+    expect(typeof api.removeDependency).toBe('function')
+    expect(typeof api.getImpactAnalysis).toBe('function')
+    expect(typeof api.reSyncDependencies).toBe('function')
+    expect(typeof api.getJobStatus).toBe('function')
+    expect(typeof api.resolveConflict).toBe('function')
+  })
 })

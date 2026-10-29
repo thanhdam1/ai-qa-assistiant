@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowUpRight, Braces, CheckCircle2, ChevronRight, ClipboardCheck, ClipboardList, Clock3, FilePlus2, History, ListChecks, Menu, Pencil, RefreshCw, Search, ShieldCheck, Sparkles, Zap } from 'lucide-react'
+import { ArrowUpRight, Braces, CheckCircle2, ChevronRight, ClipboardCheck, ClipboardList, Clock3, FilePlus2, History, ListChecks, Menu, Pencil, RefreshCw, Search, ShieldCheck, Sparkles, Workflow, Zap } from 'lucide-react'
 import { api, ApiError } from './api'
 import { ApiContractPanel, Button, Notice, ReviewPanel, StatusBadge, StoryForm } from './ReviewPanels'
 import { TestWorkbench } from './TestWorkbench'
 import { ZeroGapPanel } from './ZeroGapPanel'
+import { ImpactAlertBanner } from './ImpactAlertBanner'
+import { StoryJourneyGraphPanel } from './StoryJourneyGraphPanel'
 import { currentDecisions, hasDesignEvidence, isCaseReady } from './qaView'
 import type { Story, Workspace } from './types'
 
-type View = 'tests' | 'coverage' | 'zerogap' | 'requirements' | 'api' | 'history'
+type View = 'tests' | 'coverage' | 'zerogap' | 'journey' | 'requirements' | 'api' | 'history'
 const tabs = [
   { id: 'tests', label: 'Test cases', icon: ListChecks },
   { id: 'coverage', label: 'Coverage & bằng chứng', icon: ShieldCheck },
   { id: 'zerogap', label: 'Zero-Gap v2.0 (100%)', icon: Zap },
+  { id: 'journey', label: 'E2E Journey Graph', icon: Workflow },
   { id: 'requirements', label: 'Yêu cầu', icon: ClipboardList },
   { id: 'api', label: 'API contract', icon: Braces },
   { id: 'history', label: 'Lịch sử', icon: History },
@@ -111,6 +114,7 @@ export default function App() {
         setBusy('story'); setError('')
         try { const saved = editingStory && workspace ? await api.updateStory(workspace.id, data) : await api.createStory(data); await loadStories(); await openStory(saved.id) } catch (e) { setError(message(e)) } finally { setBusy('') }
       }} /> : loading ? <div className="loading-state" role="status"><RefreshCw className="spin" /><p>Đang tải workspace…</p></div> : !workspace ? <div className="empty-workspace"><ClipboardList size={42} /><h2>Bắt đầu từ một user story</h2><p>Nhập yêu cầu, review các điểm chưa rõ và tạo test suite để QA kiểm tra.</p><Button onClick={() => setShowForm(true)}><FilePlus2 size={17} /> Tạo story đầu tiên</Button></div> : <>
+        <ImpactAlertBanner workspace={workspace} onRefresh={refresh} onOpenJourneyGraph={() => setView('journey')} />
         {suite && <section className="quality-strip" aria-label="Tình trạng kiểm thử">
           <button onClick={() => setView('tests')}><span><ClipboardCheck size={15} /> Review nội dung</span><strong>{suite.stale ? 'Nguồn đã thay đổi' : suite.review_status === 'approved' ? 'Đã duyệt' : 'Chờ QA review'}</strong><small>{suite.stale ? 'Cần sinh lại suite' : 'Quyết định về nội dung test'}</small></button>
           <button className="coverage-metric" onClick={() => setView('coverage')}><span><ShieldCheck size={15} /> Coverage thiết kế</span><strong>{evidenceCount}<em> / {targets.length}</em><small>mục tiêu</small></strong><div className="coverage-meter" aria-hidden="true"><i style={{ width: `${targets.length ? evidenceCount / targets.length * 100 : 0}%` }} /></div><small>Có assertion liên kết</small></button>
@@ -128,6 +132,14 @@ export default function App() {
         </>}
         {view === 'api' && <ApiContractPanel specs={workspace.api_specifications} reviews={workspace.api_contract_reviews} busy={busy} onUpload={file => run('upload-api', () => api.uploadApiSpecification(workspace.id, file))} onGenerate={id => run('generate-api-review', () => api.generateApiContractReview(id))} onSave={(id, content) => save('save-api-review', () => api.updateApiContractReview(id, content))} onApprove={id => run('approve-api-review', () => api.approveApiContractReview(id))} />}
         {view === 'zerogap' && <ZeroGapPanel workspace={workspace} busy={busy} setBusy={setBusy} />}
+        {view === 'journey' && (
+          <StoryJourneyGraphPanel
+            workspace={workspace}
+            allStories={stories}
+            onOpenStory={id => void openStory(id)}
+            onRefresh={refresh}
+          />
+        )}
 
         {view === 'history' && <section className="card history"><div className="workbench-heading"><div><h2>Lịch sử review & test suite</h2><p>Đối chiếu phiên bản nguồn và trạng thái phê duyệt.</p></div></div><div className="table-scroll"><table className="qa-table"><thead><tr><th>Loại</th><th>Story</th><th>Trạng thái</th><th>Thời gian tạo</th><th /></tr></thead><tbody>{history.map(item => <tr key={`${item.kind}-${item.id}`}><td>{item.kind}</td><td>v{item.story_version}</td><td><StatusBadge status={item.status} stale={item.stale} /></td><td>{new Date(item.created_at).toLocaleString('vi-VN')}</td><td>{item.kind === 'Test suite' && <button className="text-button" onClick={() => { setSelectedSuiteId(item.id); setView('tests') }}>Xem suite <ArrowUpRight size={15} /></button>}</td></tr>)}</tbody></table></div></section>}
       </>}
