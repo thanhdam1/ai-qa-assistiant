@@ -133,9 +133,12 @@ def stories_remove_dependency(story_id: str, target_id: str, db: Db):
     response_model=StoryDependencyTree,
 )
 def stories_get_dependency_tree(
-    story_id: str, db: Db, max_depth: int | None = Query(None, ge=1)
+    story_id: str, db: Db, max_depth: str | None = Query(None)
 ):
-    return get_dependency_tree(db, story_id, max_depth=max_depth)
+    depth_val: int | None = None
+    if max_depth and max_depth.strip().isdigit():
+        depth_val = int(max_depth.strip())
+    return get_dependency_tree(db, story_id, max_depth=depth_val)
 
 
 @router.get(
