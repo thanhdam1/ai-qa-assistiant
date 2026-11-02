@@ -29,6 +29,17 @@ from app.schemas import (
     CoverageDecisionInput,
     CoverageAcceptanceInput,
     CaseReadinessInput,
+    StoryCollectionRead,
+    StoryCollectionUpdate,
+    CollectionDiscoveryResult,
+)
+from app.services.collection_engine import (
+    discover_and_sync_collections,
+    get_all_collections_with_stats,
+    get_collection_by_id,
+    update_collection,
+    delete_collection,
+    export_collection_postman,
 )
 from app.services.ai import AIProvider, get_ai_provider
 from app.services.dependency_graph import (
@@ -368,5 +379,67 @@ def stories_resolve_conflict(
     db: Db,
 ):
     return resolve_merge_conflict(db, story_id, payload.case_id, payload.action.value)
+
+
+# ==============================================================================
+# STORY COLLECTIONS & E2E JOURNEY ORCHESTRATION ROUTES
+# ==============================================================================
+
+
+@router.get("/collections", response_model=list[StoryCollectionRead])
+def collections_list(db: Db):
+    """Lists all story collections clustered by DAG connections."""
+    return get_all_collections_with_stats(db)
+
+
+@router.get("/collections/{collection_id}", response_model=StoryCollectionRead)
+def collections_get(collection_id: str, db: Db):
+    """Retrieves full details of a specific collection."""
+    return get_collection_by_id(db, collection_id)
+
+
+@router.post("/collections/auto-discover", response_model=CollectionDiscoveryResult)
+def collections_auto_discover(db: Db):
+    """Scans the DAG graph and auto-synchronizes collections."""
+    synced = discover_and_sync_collections(db)
+    all_cols = get_all_collections_with_stats(db)
+    return CollectionDiscoveryResult(
+        discovered_collections_count=len(synced),
+        synced_collections=all_cols,
+    )
+
+
+@router.put("/collections/{collection_id}", response_model=StoryCollectionRead)
+def collections_update(collection_id: str, payload: StoryCollectionUpdate, db: Db):
+    """Updates metadata or customized execution sequence of a collection."""
+    return update_collection(
+        db,
+        collection_id,
+        name=payload.name,
+        description=payload.description,
+        execution_order=payload.execution_order,
+    )
+
+
+@router.delete("/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
+def collections_delete(collection_id: str, db: Db):
+    """Deletes a collection group without affecting the underlying User Stories."""
+    delete_collection(db, collection_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/collections/{collection_id}/export")
+def collections_export_postman(collection_id: str, db: Db):
+    """Exports a ready-to-run Postman Collection v2.1 JSON file."""
+    col = get_collection_by_id(db, collection_id)
+    postman_data = export_collection_postman(db, collection_id)
+    content = json_bytes(postman_data)
+    safe_code = col.code.lower().replace("-", "_")
+    filename = f"postman_collection_{safe_code}.json"
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 

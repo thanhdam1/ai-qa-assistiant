@@ -17,8 +17,10 @@ Use the same language as the story (Vietnamese or English).
 """.strip()
 
 
-def story_payload(story: Story) -> dict:
-    return {
+def story_payload(
+    story: Story, upstream_contracts: list[dict] | None = None
+) -> dict:
+    payload = {
         "title": story.title,
         "description": story.description,
         "acceptance_criteria": story.acceptance_criteria,
@@ -28,6 +30,9 @@ def story_payload(story: Story) -> dict:
         "language_preference": story.language,
         "version": story.version,
     }
+    if upstream_contracts:
+        payload["upstream_contracts"] = upstream_contracts
+    return payload
 
 
 def requirement_review_input(story: Story) -> list[dict[str, str]]:
@@ -182,6 +187,7 @@ def test_case_input(
     review: RequirementReviewContent,
     api_review: ApiContractReviewContent | None = None,
     specification: ApiSpecification | None = None,
+    upstream_contracts: list[dict] | None = None,
 ) -> list[dict[str, str]]:
     instructions = f"""
 You are a senior QA test designer who produces executable,
@@ -649,11 +655,12 @@ J. No generated case is presented as executed or passed.
 
 Prefer complete, non-duplicative coverage over a fixed test count."""
     data = {
-        "story": story_payload(story),
+        "story": story_payload(story, upstream_contracts=upstream_contracts),
         "approved_requirement_review": review.model_dump(mode="json"),
         "approved_api_contract_review": (
             api_review.model_dump(mode="json") if api_review is not None else None
         ),
+        "upstream_contracts": upstream_contracts or [],
         "normalized_openapi_operations": (
             [
                 operation
@@ -703,8 +710,11 @@ def test_case_repair_input(
     specification: ApiSpecification | None,
     previous_output: dict,
     issues: list[dict],
+    upstream_contracts: list[dict] | None = None,
 ) -> list[dict[str, str]]:
-    messages = test_case_input(story, review, api_review, specification)
+    messages = test_case_input(
+        story, review, api_review, specification, upstream_contracts=upstream_contracts
+    )
     messages.append(
         {
             "role": "user",

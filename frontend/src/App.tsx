@@ -1,22 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowUpRight, Braces, CheckCircle2, ChevronRight, ClipboardCheck, ClipboardList, Clock3, FilePlus2, History, ListChecks, Menu, Pencil, RefreshCw, Search, ShieldCheck, Sparkles, Workflow, Zap } from 'lucide-react'
+import { ArrowUpRight, Boxes, Braces, CheckCircle2, ChevronRight, ClipboardCheck, ClipboardList, Clock3, FilePlus2, History, ListChecks, Menu, Pencil, RefreshCw, Search, ShieldCheck, Sparkles, Workflow, Zap } from 'lucide-react'
 import { api, ApiError } from './api'
 import { ApiContractPanel, Button, Notice, ReviewPanel, StatusBadge, StoryForm } from './ReviewPanels'
 import { TestWorkbench } from './TestWorkbench'
 import { ZeroGapPanel } from './ZeroGapPanel'
 import { ImpactAlertBanner } from './ImpactAlertBanner'
 import { StoryJourneyGraphPanel } from './StoryJourneyGraphPanel'
+import { StoryCollectionsPanel } from './StoryCollectionsPanel'
 import { currentDecisions, hasDesignEvidence, isCaseReady } from './qaView'
 import type { Story, Workspace } from './types'
 
-type View = 'tests' | 'coverage' | 'zerogap' | 'journey' | 'requirements' | 'api' | 'history'
+type View = 'collections' | 'tests' | 'coverage' | 'zerogap' | 'journey' | 'requirements' | 'api' | 'history'
 const tabs = [
-  { id: 'tests', label: 'Test cases', icon: ListChecks },
-  { id: 'coverage', label: 'Coverage & bằng chứng', icon: ShieldCheck },
-  { id: 'zerogap', label: 'Zero-Gap v2.0 (100%)', icon: Zap },
-  { id: 'journey', label: 'E2E Journey Graph', icon: Workflow },
+  { id: 'collections', label: 'Story Collections', icon: Boxes },
+  { id: 'tests', label: 'Test Cases', icon: ListChecks },
+  { id: 'coverage', label: 'Coverage', icon: ShieldCheck },
+  { id: 'zerogap', label: 'Zero-Gap (100%)', icon: Zap },
+  { id: 'journey', label: 'Journey Graph', icon: Workflow },
   { id: 'requirements', label: 'Yêu cầu', icon: ClipboardList },
-  { id: 'api', label: 'API contract', icon: Braces },
+  { id: 'api', label: 'API Contract', icon: Braces },
   { id: 'history', label: 'Lịch sử', icon: History },
 ] as const
 
@@ -132,6 +134,17 @@ export default function App() {
         </>}
         {view === 'api' && <ApiContractPanel specs={workspace.api_specifications} reviews={workspace.api_contract_reviews} busy={busy} onUpload={file => run('upload-api', () => api.uploadApiSpecification(workspace.id, file))} onGenerate={id => run('generate-api-review', () => api.generateApiContractReview(id))} onSave={(id, content) => save('save-api-review', () => api.updateApiContractReview(id, content))} onApprove={id => run('approve-api-review', () => api.approveApiContractReview(id))} />}
         {view === 'zerogap' && <ZeroGapPanel workspace={workspace} busy={busy} setBusy={setBusy} />}
+        {view === 'collections' && (
+          <StoryCollectionsPanel
+            stories={stories}
+            currentStoryId={workspace?.id}
+            onSelectStory={id => void openStory(id)}
+            onOpenGraph={id => {
+              void openStory(id)
+              setView('journey')
+            }}
+          />
+        )}
         {view === 'journey' && (
           <StoryJourneyGraphPanel
             workspace={workspace}

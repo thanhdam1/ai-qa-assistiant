@@ -2,7 +2,7 @@ import re
 import threading
 import zlib
 from collections import defaultdict, deque
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -471,3 +471,69 @@ def analyze_story_impact(db: Session, story_id: str) -> StoryImpactAnalysisRepor
         upstream_impacts=upstream_reports,
         downstream_impacts=downstream_reports,
     )
+
+
+def extract_upstream_contracts(db: Session, story_id: str) -> list[dict[str, Any]]:
+    """
+    Extracts structured upstream contracts for a given target story.
+    These contracts inform the AI test generator about exact inputs,
+    usage conditions, and confirmed error rules from upstream dependencies.
+    """
+    dependencies = (
+        db.query(StoryDependency)
+        .filter(StoryDependency.target_story_id == story_id)
+        .all()
+    )
+    if not dependencies:
+        return []
+
+    contracts: list[dict[str, Any]] = []
+    for dep in dependencies:
+        source = dep.source_story
+        if not source:
+            source = db.get(Story, dep.source_story_id)
+        if not source:
+            continue
+
+        raw_contract = dep.binding_contract or {}
+        consumed_outputs = raw_contract.get("consumed_outputs") or []
+        bound_rules = raw_contract.get("bound_rules") or []
+        data_mappings = raw_contract.get("data_mappings") or {}
+
+        # Standardize data mappings into a structured list
+        formatted_mappings = []
+        if isinstance(data_mappings, dict):
+            for out_f, in_f in data_mappings.items():
+                formatted_mappings.append({
+                    "output_field": out_f,
+                    "consumed_input": in_f,
+                    "description": f"Output '{out_f}' từ Story nguồn map vào input '{in_f}'",
+                })
+        elif isinstance(data_mappings, list):
+            formatted_mappings = data_mappings
+
+        # Extract usage preconditions and confirmed error rules
+        usage_preconditions = raw_contract.get("usage_preconditions") or []
+        if not usage_preconditions and source.acceptance_criteria:
+            usage_preconditions = [
+                f"Được tạo và bảo đảm bởi AC của Story nguồn: {ac[:120]}"
+                for ac in source.acceptance_criteria[:2]
+            ]
+
+        confirmed_error_rules = raw_contract.get("confirmed_error_rules") or []
+
+        contracts.append({
+            "source_story_id": source.id,
+            "source_story_title": source.title,
+            "source_version": source.version,
+            "dependency_type": dep.dependency_type,
+            "relationship_summary": f"Story hiện tại nhận dữ liệu / tiền điều kiện từ Story [{source.title}]",
+            "consumed_outputs": consumed_outputs,
+            "bound_rules": bound_rules,
+            "data_mappings": formatted_mappings,
+            "usage_preconditions": usage_preconditions,
+            "confirmed_error_rules": confirmed_error_rules,
+            "source_reference": f"Story {source.title} (v{source.version})",
+        })
+
+    return contracts

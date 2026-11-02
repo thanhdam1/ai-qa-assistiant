@@ -246,4 +246,37 @@ export interface ZeroGapSuiteResponse {
   gaps_for_qa: GapForQA[]
 }
 
+export interface CollectionMember {
+  id: string
+  collection_id: string
+  story_id: string
+  story_title: string
+  story_version: number
+  sequence_order: number
+  role_in_flow: 'entry_point' | 'intermediate' | 'terminal'
+  test_cases_count: number
+  test_set_status: string
+}
+
+export interface StoryCollection {
+  id: string
+  name: string
+  code: string
+  description?: string | null
+  collection_type: string
+  execution_order: string[]
+  health_status: 'synced' | 'suspect_stale' | 'broken'
+  metadata_info?: Record<string, any>
+  created_at: string
+  updated_at: string
+  members: CollectionMember[]
+  total_stories: number
+  total_test_cases: number
+}
+
+export interface CollectionDiscoveryResult {
+  discovered_collections_count: number
+  synced_collections: StoryCollection[]
+}
+
 

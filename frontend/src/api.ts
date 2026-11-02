@@ -131,5 +131,22 @@ export const api = {
       `/stories/${storyId}/resolve-conflict`,
       { method: 'POST', body: JSON.stringify(body) }
     ),
+  listCollections: () => request<import('./types').StoryCollection[]>('/collections'),
+  getCollection: (id: string) => request<import('./types').StoryCollection>(`/collections/${id}`),
+  autoDiscoverCollections: () =>
+    request<import('./types').CollectionDiscoveryResult>('/collections/auto-discover', {
+      method: 'POST',
+    }),
+  updateCollection: (
+    id: string,
+    body: { name?: string; description?: string; execution_order?: string[] }
+  ) =>
+    request<import('./types').StoryCollection>(`/collections/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  deleteCollection: (id: string) =>
+    request<void>(`/collections/${id}`, { method: 'DELETE' }),
+  getCollectionExportUrl: (id: string) => `${BASE}/collections/${id}/export`,
 }
 

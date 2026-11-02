@@ -75,6 +75,11 @@ class Story(Base):
         back_populates="target_story",
         cascade="all, delete-orphan",
     )
+    collection_memberships: Mapped[list[CollectionStoryMember]] = relationship(
+        "CollectionStoryMember",
+        back_populates="story",
+        cascade="all, delete-orphan",
+    )
 
 
 class ApiSpecification(Base):
@@ -132,7 +137,9 @@ class ApiContractReview(Base):
 
     story: Mapped[Story] = relationship(back_populates="api_contract_reviews")
     specification: Mapped[ApiSpecification] = relationship(back_populates="contract_reviews")
-    test_case_sets: Mapped[list[TestCaseSet]] = relationship(back_populates="api_contract_review")
+    test_case_sets: Mapped[list[TestCaseSet]] = relationship(
+        back_populates="api_contract_review"
+    )
 
 
 class RequirementReview(Base):
@@ -257,3 +264,46 @@ class AsyncJob(Base):
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
+
+class StoryCollection(Base):
+    __tablename__ = "story_collections"
+    __table_args__ = (
+        Index("ix_collection_code", "code"),
+        Index("ix_collection_health", "health_status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(240), nullable=False)
+    code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    collection_type: Mapped[str] = mapped_column(String(32), default="dag_journey")
+    execution_order: Mapped[list] = mapped_column(JSON, default=list)
+    health_status: Mapped[str] = mapped_column(String(32), default="synced")
+    metadata_info: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    members: Mapped[list[CollectionStoryMember]] = relationship(
+        "CollectionStoryMember", back_populates="collection", cascade="all, delete-orphan"
+    )
+
+
+class CollectionStoryMember(Base):
+    __tablename__ = "collection_story_members"
+    __table_args__ = (
+        UniqueConstraint("collection_id", "story_id", name="uq_collection_story"),
+        Index("ix_col_member_col", "collection_id"),
+        Index("ix_col_member_story", "story_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    collection_id: Mapped[str] = mapped_column(ForeignKey("story_collections.id", ondelete="CASCADE"))
+    story_id: Mapped[str] = mapped_column(ForeignKey("stories.id", ondelete="CASCADE"))
+    sequence_order: Mapped[int] = mapped_column(Integer, default=0)
+    role_in_flow: Mapped[str] = mapped_column(String(32), default="intermediate")
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    collection: Mapped[StoryCollection] = relationship("StoryCollection", back_populates="members")
+    story: Mapped[Story] = relationship("Story", back_populates="collection_memberships")

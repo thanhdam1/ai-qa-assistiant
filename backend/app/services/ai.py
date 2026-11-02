@@ -96,6 +96,7 @@ class AIProvider(Protocol):
         review: RequirementReviewContent,
         api_review: ApiContractReviewContent | None = None,
         specification: ApiSpecification | None = None,
+        upstream_contracts: list[dict] | None = None,
     ) -> TestCaseSetContent: ...
 
     async def repair_test_cases(
@@ -106,6 +107,7 @@ class AIProvider(Protocol):
         specification: ApiSpecification | None,
         previous_output: TestCaseSetContent,
         issues: list[dict],
+        upstream_contracts: list[dict] | None = None,
     ) -> TestCaseSetContent: ...
 
 
@@ -193,16 +195,23 @@ class OpenAIProvider:
         review: RequirementReviewContent,
         api_review: ApiContractReviewContent | None = None,
         specification: ApiSpecification | None = None,
+        upstream_contracts: list[dict] | None = None,
     ) -> TestCaseSetContent:
-        return await self._parse(test_case_input(story, review, api_review, specification), TestCaseSetContent)
+        return await self._parse(
+            test_case_input(
+                story, review, api_review, specification, upstream_contracts=upstream_contracts
+            ),
+            TestCaseSetContent,
+        )
 
     async def repair_test_cases(
-        self, story, review, api_review, specification, previous_output, issues
+        self, story, review, api_review, specification, previous_output, issues, upstream_contracts=None
     ) -> TestCaseSetContent:
         return await self._parse(
             test_case_repair_input(
                 story, review, api_review, specification,
                 previous_output.model_dump(mode="json"), issues,
+                upstream_contracts=upstream_contracts,
             ),
             TestCaseSetContent,
         )
@@ -407,20 +416,24 @@ class GeminiProvider:
         review: RequirementReviewContent,
         api_review: ApiContractReviewContent | None = None,
         specification: ApiSpecification | None = None,
+        upstream_contracts: list[dict] | None = None,
     ) -> TestCaseSetContent:
         return await self._parse(
-            test_case_input(story, review, api_review, specification),
+            test_case_input(
+                story, review, api_review, specification, upstream_contracts=upstream_contracts
+            ),
             TestCaseSetContent,
             traceability_ids=valid_traceability_ids(review, api_review),
         )
 
     async def repair_test_cases(
-        self, story, review, api_review, specification, previous_output, issues
+        self, story, review, api_review, specification, previous_output, issues, upstream_contracts=None
     ) -> TestCaseSetContent:
         return await self._parse(
             test_case_repair_input(
                 story, review, api_review, specification,
                 previous_output.model_dump(mode="json"), issues,
+                upstream_contracts=upstream_contracts,
             ),
             TestCaseSetContent,
             traceability_ids=valid_traceability_ids(review, api_review),

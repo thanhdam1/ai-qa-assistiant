@@ -32,6 +32,7 @@ from app.schemas import (
     TestCaseSetContent,
 )
 from app.services.ai import AIProvider
+from app.services.dependency_graph import extract_upstream_contracts
 from app.services.identity import acceptance_criterion_sources, criterion_source_id, fingerprint, normalized_text
 from app.services.openapi_parser import is_valid_source_reference, parse_openapi
 from app.services.prompts import (
@@ -1229,9 +1230,15 @@ async def generate_test_set(
         ):
             raise StaleVersionError()
         api_review_content = ApiContractReviewContent.model_validate(api_contract_review.content)
-        result = await ai.generate_test_cases(story, review_content, api_review_content, api_specification)
+        upstream_contracts = extract_upstream_contracts(db, story.id)
+        result = await ai.generate_test_cases(
+            story, review_content, api_review_content, api_specification, upstream_contracts=upstream_contracts
+        )
     else:
-        result = await ai.generate_test_cases(story, review_content)
+        upstream_contracts = extract_upstream_contracts(db, story.id)
+        result = await ai.generate_test_cases(
+            story, review_content, upstream_contracts=upstream_contracts
+        )
     ai_original_content = result.model_dump(mode="json")
     original_review = RequirementReviewContent.model_validate(review.ai_original)
     legacy_requirement_ids = {
@@ -1294,6 +1301,7 @@ async def generate_test_set(
                 api_specification,
                 result,
                 issues,
+                upstream_contracts=upstream_contracts,
             )
     test_set = TestCaseSet(
         story_id=story.id,

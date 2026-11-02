@@ -158,6 +158,15 @@ class TestStep(BaseModel):
         return v
 
 
+class UpstreamTraceItem(BaseModel):
+    source_story_id: str
+    source_story_title: str | None = None
+    source_version: int = 1
+    consumed_fields: list[str] = Field(default_factory=list)
+    bound_rules: list[str] = Field(default_factory=list)
+    contract_reference: str | None = None
+
+
 class TestCase(BaseModel):
     id: str = Field(pattern=r"^TC-[A-Za-z0-9_-]+$")
     title: str = Field(min_length=1, max_length=240)
@@ -174,6 +183,10 @@ class TestCase(BaseModel):
     expected_result: str = Field(min_length=1)
     requirement_traceability: list[str] = Field(default_factory=list)
     api_traceability: list[str] = Field(default_factory=list)
+    upstream_traceability: list[UpstreamTraceItem] = Field(
+        default_factory=list,
+        description="Truy vết chi tiết đến Story thượng nguồn và trường dữ liệu hợp đồng"
+    )
     api_method: str | None = None
     api_path: str | None = None
     api_request: str | None = None
@@ -570,5 +583,15 @@ class ErrorBody(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorBody
+
+
+from app.schemas.story_collection import (
+    CollectionDiscoveryResult,
+    CollectionMemberRead,
+    StoryCollectionBase,
+    StoryCollectionCreate,
+    StoryCollectionRead,
+    StoryCollectionUpdate,
+)
 
 
