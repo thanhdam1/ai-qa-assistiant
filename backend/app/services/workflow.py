@@ -1113,6 +1113,13 @@ def validate_test_suite(
                 f"{case.id} steps must be ordered sequentially starting at 1",
                 422,
             )
+        for trace in getattr(case, "upstream_traceability", []):
+            if not trace.source_story_id or not trace.source_story_id.strip():
+                raise AppError(
+                    "invalid_upstream_traceability",
+                    f"{case.id} upstream_traceability requires non-empty source_story_id",
+                    422,
+                )
         if not case.api_traceability:
             if case.expected_status_codes:
                 raise AppError(

@@ -177,10 +177,23 @@ def process_resync_job(job_id: str, story_id: str) -> None:
                                     "conflict_fields": ["expected_result", "test_data"],
                                 }
                             )
+                            # Sync source_version in upstream_traceability
+                            updated_traces = []
+                            for tr in getattr(case, "upstream_traceability", []):
+                                if tr.source_story_id in expected_upstream_versions:
+                                    updated_traces.append(
+                                        tr.model_copy(
+                                            update={"source_version": expected_upstream_versions[tr.source_story_id]}
+                                        )
+                                    )
+                                else:
+                                    updated_traces.append(tr)
+
                             # Keep QA version intact, update is_customized flag
                             synced_case = case.model_copy(
                                 update={
                                     "is_customized": True,
+                                    "upstream_traceability": updated_traces,
                                     "preconditions": [
                                         f"Upstream synced: {combined_delta}"
                                     ]
@@ -195,6 +208,17 @@ def process_resync_job(job_id: str, story_id: str) -> None:
                         else:
                             # Pure AI-generated case: auto-update
                             updated_cases.append(case.id)
+                            updated_traces = []
+                            for tr in getattr(case, "upstream_traceability", []):
+                                if tr.source_story_id in expected_upstream_versions:
+                                    updated_traces.append(
+                                        tr.model_copy(
+                                            update={"source_version": expected_upstream_versions[tr.source_story_id]}
+                                        )
+                                    )
+                                else:
+                                    updated_traces.append(tr)
+
                             new_preconditions = [
                                 f"Upstream synced: {combined_delta}"
                             ] + [
@@ -205,6 +229,7 @@ def process_resync_job(job_id: str, story_id: str) -> None:
                             new_test_data = case.test_data + [f"Synced rule: {combined_delta}"]
                             synced_case = case.model_copy(
                                 update={
+                                    "upstream_traceability": updated_traces,
                                     "preconditions": new_preconditions,
                                     "test_data": new_test_data,
                                 }

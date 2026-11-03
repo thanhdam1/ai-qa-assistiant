@@ -44,7 +44,14 @@ export function TestWorkbench({ testSet, workspace, view, busy, onViewChange, on
   const filteredCases = cases.filter(test => (type === 'all' || test.type === type) &&
     (basis === 'all' || test.basis === basis) && (priority === 'all' || test.priority === priority) &&
     (!clarifications || test.needs_clarification) &&
-    [test.id, test.title, test.objective, ...test.requirement_traceability, ...(test.api_traceability ?? [])].join(' ').toLocaleLowerCase().includes(normalizedQuery))
+    [
+      test.id,
+      test.title,
+      test.objective,
+      ...test.requirement_traceability,
+      ...(test.api_traceability ?? []),
+      ...(test.upstream_traceability?.flatMap(u => [u.source_story_id, ...(u.source_story_title ? [u.source_story_title] : []), ...u.consumed_fields]) ?? [])
+    ].join(' ').toLocaleLowerCase().includes(normalizedQuery))
   const filteredRows = rows.filter(row => (!gapOnly || !hasDesignEvidence(row)) &&
     [row.target_id, targetDescription(workspace, testSet, row.target_id), row.explanation, ...row.test_case_ids].join(' ').toLocaleLowerCase().includes(normalizedQuery))
   const selectedCase = filteredCases.find(test => test.id === selectedCaseId)
@@ -103,9 +110,40 @@ export function TestWorkbench({ testSet, workspace, view, busy, onViewChange, on
           <div className="table-scroll" tabIndex={0} aria-label={view === 'tests' ? 'Bảng test cases, cuộn ngang để xem thêm' : 'Bảng coverage'}>
             {view === 'tests' ? <table className="qa-table"><caption className="sr-only">Test cases của story {workspace.title}</caption><thead><tr><th scope="col">Test case</th><th scope="col">Loại / Priority</th><th scope="col">Traceability</th><th scope="col">Trạng thái</th></tr></thead>
               <tbody>{filteredCases.map(test => <tr key={test.id} className={selectedCase?.id === test.id ? 'selected-row' : ''}>
-                <td><div className="case-meta"><code>{test.id}</code><Basis test={test} /></div><button className="case-title" onClick={() => selectCase(test.id)} aria-expanded={selectedCase?.id === test.id}>{test.title}<ChevronRight size={15} /></button></td>
+                <td>
+                  <div className="case-meta">
+                    <code>{test.id}</code>
+                    <Basis test={test} />
+                    {test.upstream_traceability?.map((tr, idx) => (
+                      <span
+                        key={idx}
+                        className="upstream-trace-chip"
+                        title={`Nguồn: ${tr.source_story_title || tr.source_story_id} (v${tr.source_version}) · Trường: ${tr.consumed_fields.join(', ') || 'N/A'}`}
+                      >
+                        🔗 {tr.source_story_id}{tr.consumed_fields.length > 0 ? ` (${tr.consumed_fields[0]}${tr.consumed_fields.length > 1 ? ` +${tr.consumed_fields.length - 1}` : ''})` : ''}
+                      </span>
+                    ))}
+                  </div>
+                  <button className="case-title" onClick={() => selectCase(test.id)} aria-expanded={selectedCase?.id === test.id}>
+                    {test.title}
+                    <ChevronRight size={15} />
+                  </button>
+                </td>
                 <td><span className={`type type-${test.type}`}>{typeLabels[test.type]}</span><span className={`priority-label priority-${test.priority}`}><i />{test.priority}</span></td>
-                <td><button className="trace-count" title={[...test.requirement_traceability, ...(test.api_traceability ?? [])].join(', ')} onClick={() => selectCase(test.id)}><Link2 size={14} /> {test.requirement_traceability.length + (test.api_traceability ?? []).length} nguồn</button><small>{test.requirement_traceability[0] ?? test.api_traceability?.[0] ?? 'Thiếu liên kết'}</small></td>
+                <td>
+                  <button
+                    className="trace-count"
+                    title={[...test.requirement_traceability, ...(test.api_traceability ?? []), ...(test.upstream_traceability?.map(u => `Nguồn: ${u.source_story_id} (${u.consumed_fields.join(', ')})`) ?? [])].join(', ')}
+                    onClick={() => selectCase(test.id)}
+                  >
+                    <Link2 size={14} /> {test.requirement_traceability.length + (test.api_traceability ?? []).length + (test.upstream_traceability?.length ?? 0)} nguồn
+                  </button>
+                  <small>
+                    {test.upstream_traceability?.[0]
+                      ? `🔗 ${test.upstream_traceability[0].source_story_id} (${test.upstream_traceability[0].consumed_fields[0] || `v${test.upstream_traceability[0].source_version}`})`
+                      : test.requirement_traceability[0] ?? test.api_traceability?.[0] ?? 'Thiếu liên kết'}
+                  </small>
+                </td>
                 <td>{test.needs_clarification ? <span className="clarify">Cần làm rõ</span> : isCaseReady(testSet, test) ? <span className="ready">Sẵn sàng chạy</span> : <span className="neutral-status">Chờ điều kiện chạy</span>}</td>
               </tr>)}</tbody></table> :
               <table className="qa-table coverage-table"><caption className="sr-only">Coverage thiết kế theo từng mục tiêu</caption><thead><tr><th scope="col">Mục tiêu kiểm thử</th><th scope="col">Bằng chứng thiết kế</th><th scope="col">Quyết định QA</th></tr></thead><tbody>{filteredRows.map(row => {
@@ -123,7 +161,44 @@ export function TestWorkbench({ testSet, workspace, view, busy, onViewChange, on
               <div className="case-meta"><code>{selectedCase.id}</code><Basis test={selectedCase} /></div><h3 className="evidence-case-title">{selectedCase.title}</h3><p className="muted">{selectedCase.objective}</p>
               {selectedCase.needs_clarification && <div className="inline-warning"><AlertTriangle size={16} /><span>Clarification: cần xác nhận thông tin trước khi chạy.</span></div>}
               <section className="expected-result"><h4><CheckCircle2 size={16} /> Expected result</h4><p>{selectedCase.expected_result}</p></section>
-              <section><h4><Link2 size={15} /> Traceability</h4>{[...selectedCase.requirement_traceability, ...(selectedCase.api_traceability ?? [])].map(id => <button key={id} className="source-link" onClick={() => openTarget(id)}><code>{id}</code><span>{targetDescription(workspace, testSet, id) ?? 'Không tìm thấy mô tả trong review nguồn'}</span><ArrowUpRight size={14} /></button>)}</section>
+              <section>
+                <h4><Link2 size={15} /> Traceability</h4>
+                {selectedCase.upstream_traceability && selectedCase.upstream_traceability.length > 0 && (
+                  <div className="upstream-trace-section" style={{ marginBottom: '14px' }}>
+                    <h5 style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Link2 size={13} /> Hợp đồng dữ liệu Thượng nguồn ({selectedCase.upstream_traceability.length})
+                    </h5>
+                    {selectedCase.upstream_traceability.map((item, idx) => (
+                      <div key={idx} className="upstream-trace-card">
+                        <div className="upstream-trace-header">
+                          <span>🔗 {item.source_story_title ? `${item.source_story_title} (${item.source_story_id})` : item.source_story_id}</span>
+                          <span className="upstream-trace-version">v{item.source_version}</span>
+                        </div>
+                        {item.consumed_fields && item.consumed_fields.length > 0 && (
+                          <div style={{ marginTop: '5px', fontSize: '12px' }}>
+                            <span style={{ color: '#64748b', marginRight: '6px' }}>Trường tiêu thụ:</span>
+                            {item.consumed_fields.map((f, fIdx) => (
+                              <span key={fIdx} className="upstream-trace-field-tag">{f}</span>
+                            ))}
+                          </div>
+                        )}
+                        {item.bound_rules && item.bound_rules.length > 0 && (
+                          <div style={{ marginTop: '4px', fontSize: '12px', color: '#475569' }}>
+                            <span style={{ color: '#64748b', marginRight: '6px' }}>Quy tắc ràng buộc:</span>
+                            {item.bound_rules.join('; ')}
+                          </div>
+                        )}
+                        {item.contract_reference && (
+                          <div style={{ marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
+                            <em>Căn cứ: {item.contract_reference}</em>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {[...selectedCase.requirement_traceability, ...(selectedCase.api_traceability ?? [])].map(id => <button key={id} className="source-link" onClick={() => openTarget(id)}><code>{id}</code><span>{targetDescription(workspace, testSet, id) ?? 'Không tìm thấy mô tả trong review nguồn'}</span><ArrowUpRight size={14} /></button>)}
+              </section>
               <section><h4><ListChecks size={15} /> Steps & assertions</h4><ol className="step-list">{selectedCase.steps.map(step => <li key={step.order}><span className="step-number">{step.order}</span><div><p>{step.action}</p><blockquote>{step.expected_result}</blockquote></div></li>)}</ol></section>
               <details><summary>Preconditions & test data</summary><h4>Preconditions</h4><TextList items={selectedCase.preconditions} empty="Không yêu cầu." /><h4>Test data</h4><TextList items={selectedCase.test_data} empty="Chưa khai báo dữ liệu." /></details>
               {selectedCase.api_method && <details><summary>API request & response</summary><p><code>{selectedCase.api_method}</code> {selectedCase.api_path}</p><pre>{selectedCase.api_request}</pre><p>Status: {(selectedCase.expected_status_codes ?? []).join(', ') || 'Chưa xác nhận'}</p></details>}

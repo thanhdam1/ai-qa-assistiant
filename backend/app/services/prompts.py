@@ -5,7 +5,7 @@ from app.schemas import ApiContractReviewContent, RequirementReviewContent
 from app.services.identity import acceptance_criterion_sources
 
 REVIEW_PROMPT_VERSION = "review-v4"
-TEST_CASE_PROMPT_VERSION = "testcase-v11"
+TEST_CASE_PROMPT_VERSION = "testcase-v12"
 API_CONTRACT_PROMPT_VERSION = "api-contract-v4"
 
 COMMON_GUARDRAIL = """
@@ -621,7 +621,30 @@ returning; each required category count must equal exactly one.
 A category without a safe test must be needs_clarification with
 a specific explanation.
 
-11. FINAL SELF-CHECK
+11. UPSTREAM CONTRACT & INTERFACE VERIFICATION
+
+When upstream_contracts are supplied in the story:
+A. Input Provenance & Realism:
+   - Identify preconditions and test_data using the exact output fields from upstream stories.
+   - Explicitly label source fixture outputs (e.g. "[Lấy cart.id từ Story CART-01]") versus local test inputs.
+   - Distinguish sample test data from actual values required to be supplied by upstream outputs.
+
+B. Handshake and Interface Boundary Testing:
+   - Generate test cases verifying how this story handles valid, missing, expired, or invalid data received from upstream dependencies.
+   - Do NOT test upstream's internal logic: do not re-test how the upstream story creates or manages its internal state (e.g. do not re-test how CART-01 adds products or calculates discounts; test only how this story responds when receiving that cart output).
+   - Base error assertions strictly on confirmed contract rules. If error codes or behaviors are not explicitly specified in the contract or story, mark needs_clarification=true and record the question in assumptions. Never invent HTTP error codes (e.g. 400 CART_ALREADY_PROCESSED) unless explicitly confirmed by the API contract or upstream rules.
+
+C. Upstream Traceability Linkage:
+   - For every test case that exercises an upstream dependency or consumes its outputs, populate upstream_traceability with:
+     - source_story_id: ID of the upstream story.
+     - source_story_title: Title of the upstream story.
+     - source_version: Version of the upstream story.
+     - consumed_fields: Specific output fields consumed by this test case (e.g. ["cart.id", "cart.total_amount"]).
+     - bound_rules: Contract rules exercised (e.g. ["min_order_threshold"]).
+     - contract_reference: Reference to the contract or upstream source.
+   - For test cases that only test local story logic independent of upstream, leave upstream_traceability as an empty array [].
+
+12. FINAL SELF-CHECK
 
 Before returning, internally verify:
 
@@ -652,6 +675,8 @@ H. Response statuses and state enums refer to the correct entity.
 I. No case is duplicated merely to increase the count.
 
 J. No generated case is presented as executed or passed.
+
+K. Upstream dependencies are verified at interface boundaries only, without re-testing upstream internal logic; upstream_traceability is correctly populated for contract-exercising cases.
 
 Prefer complete, non-duplicative coverage over a fixed test count."""
     data = {
@@ -730,7 +755,8 @@ def test_case_repair_input(
                 "validation. For an API case with no matching approved API finding, remove "
                 "api_method, api_path, api_request, and expected_status_codes together; do not "
                 "remove only api_traceability while leaving a status or request behind. Mark the "
-                "case needs_clarification if its outcome is then unverified.\n"
+                "case needs_clarification if its outcome is then unverified. Preserve valid "
+                "upstream_traceability; do not fabricate contract references or unconfirmed error rules.\n"
                 "VALID TRACEABILITY IDS (APPROVED SOURCES):\n"
                 + json.dumps(valid_traceability_ids(review, api_review), ensure_ascii=False)
                 + "\nVALIDATION ISSUES (DATA):\n"

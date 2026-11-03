@@ -353,16 +353,43 @@ def propagate_story_impact(
                     if latest_test_set and latest_test_set.content:
                         test_cases = latest_test_set.content.get("test_cases", [])
                         for tc in test_cases:
-                            tc_text = (
-                                f"{tc.get('title', '')} {tc.get('objective', '')} "
-                                f"{' '.join(tc.get('preconditions', []))} {' '.join(tc.get('test_data', []))} "
-                                f"{tc.get('expected_result', '')}"
+                            tc_traces = tc.get("upstream_traceability") or []
+                            matching_trace = next(
+                                (
+                                    tr
+                                    for tr in tc_traces
+                                    if tr.get("source_story_id") == story.id
+                                ),
+                                None,
                             )
-                            tc_tokens = _extract_text_tokens(tc_text)
-                            if matched_tokens and tc_tokens.intersection(matched_tokens):
-                                impacted_cases.append(tc.get("id"))
-                            elif not matched_tokens:
-                                impacted_cases.append(tc.get("id"))
+                            if matching_trace:
+                                # Priority 1: Explicit upstream contract traceability
+                                consumed_fields = [f.lower() for f in matching_trace.get("consumed_fields", [])]
+                                bound_rules_in_tc = [r.lower() for r in matching_trace.get("bound_rules", [])]
+                                tc_contract_tokens: set[str] = set()
+                                for item in consumed_fields + bound_rules_in_tc:
+                                    tc_contract_tokens.update(_extract_text_tokens(item))
+
+                                if matched_tokens and tc_contract_tokens.intersection(matched_tokens):
+                                    impacted_cases.append(tc.get("id"))
+                                elif not matched_tokens:
+                                    # Unconstrained dependency: all cases tracing to upstream story are impacted
+                                    impacted_cases.append(tc.get("id"))
+                                elif not tc_contract_tokens:
+                                    # Case traces to upstream without specific field restrictions
+                                    impacted_cases.append(tc.get("id"))
+                            elif not tc_traces:
+                                # Priority 2: Fallback heuristic for legacy test cases without upstream_traceability
+                                tc_text = (
+                                    f"{tc.get('title', '')} {tc.get('objective', '')} "
+                                    f"{' '.join(tc.get('preconditions', []))} {' '.join(tc.get('test_data', []))} "
+                                    f"{tc.get('expected_result', '')}"
+                                )
+                                tc_tokens = _extract_text_tokens(tc_text)
+                                if matched_tokens and tc_tokens.intersection(matched_tokens):
+                                    impacted_cases.append(tc.get("id"))
+                                elif not matched_tokens:
+                                    impacted_cases.append(tc.get("id"))
 
                 dep.impacted_case_ids = impacted_cases
                 impacted_dependencies.append(dep)
@@ -409,11 +436,21 @@ def analyze_story_impact(db: Session, story_id: str) -> StoryImpactAnalysisRepor
         for cid in dep.impacted_case_ids or []:
             tc = test_cases_by_id.get(cid)
             title = tc.get("title", f"Test Case {cid}") if tc else f"Test Case {cid}"
+            field_info = ""
+            if tc:
+                traces = tc.get("upstream_traceability") or []
+                matching_trace = next(
+                    (tr for tr in traces if tr.get("source_story_id") == dep.source_story_id), None
+                )
+                if matching_trace and matching_trace.get("consumed_fields"):
+                    field_info = f" [Trường: {', '.join(matching_trace.get('consumed_fields'))}]"
+
+            base_reason = (dep.stale_reason or {}).get("reason", "Tác động từ thay đổi thượng nguồn")
             case_details.append(
                 ImpactedCaseDetail(
                     case_id=cid,
                     title=title,
-                    reason=(dep.stale_reason or {}).get("reason", "Tác động từ thay đổi thượng nguồn"),
+                    reason=f"{base_reason}{field_info}",
                 )
             )
 

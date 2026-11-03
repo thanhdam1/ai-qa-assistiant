@@ -13,6 +13,15 @@ export interface ReviewContent {
   missing_acceptance_criteria: ReviewItem[]; ambiguities_and_conflicts: ReviewItem[]
   stakeholder_questions: ReviewItem[]; edge_cases: ReviewItem[]; assumptions: ReviewItem[]; risks: ReviewItem[]
 }
+export interface UpstreamTraceItem {
+  source_story_id: string
+  source_story_title?: string | null
+  source_version: number
+  consumed_fields: string[]
+  bound_rules: string[]
+  contract_reference?: string | null
+}
+
 export interface TestStep { order: number; action: string; expected_result: string }
 export interface TestCase {
   id: string; title: string; objective: string; type: TestType; basis: 'requirement' | 'recommendation'; priority: Severity
@@ -20,6 +29,7 @@ export interface TestCase {
   requirement_traceability: string[]; api_traceability: string[]; api_method: string | null; api_path: string | null
   api_request: string | null; expected_status_codes: number[]; assumptions: string[]; needs_clarification: boolean
   is_customized?: boolean
+  upstream_traceability?: UpstreamTraceItem[]
 }
 export interface CoverageAssertion { test_case_id: string; assertion: string; verifies_business_outcome: boolean }
 export interface CoverageEntry { target_type: 'acceptance_criterion' | 'requirement_obligation' | 'risk' | 'category' | 'api_check'; target_id: string; status: 'covered' | 'needs_clarification'; test_case_ids: string[]; explanation: string; assertion_evidence?: CoverageAssertion[]; unverified_aspects?: string[] }
