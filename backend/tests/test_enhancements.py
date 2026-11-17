@@ -100,38 +100,31 @@ def test_accept_story_recommendation_from_review(mem_session):
     mem_session.add(review)
     mem_session.commit()
 
-    # 1. Accept recommendation without custom text (auto extracts title + detail)
+    # Accept only an explicitly confirmed behavior, never the AI analysis.
     updated = accept_story_recommendation(
         mem_session,
         story.id,
-        AcceptRecommendationInput(finding_id="MAC-1"),
+        AcceptRecommendationInput(finding_id="MAC-1", review_id=review.id, expected_story_version=1, custom_text="Khi Customer truy cập /admin, hệ thống từ chối truy cập", expected_result="HTTP 403", confirmed_by="QA"),
     )
 
     assert updated.version == 2
     assert len(updated.acceptance_criteria) == 3
     assert updated.acceptance_criteria[2] == (
-        "AC-03: [Chặn truy cập /admin đối với Customer] "
-        "Cần có AC chặn người dùng vai trò Customer hoặc Guest truy cập vào /admin với mã HTTP 403."
+        "AC-03: Khi Customer truy cập /admin, hệ thống từ chối truy cập — HTTP 403"
     )
 
     # Verify review is marked stale
     mem_session.refresh(review)
     assert review.stale is True
 
-    # 2. Accept with custom text
-    updated_custom = accept_story_recommendation(
-        mem_session,
-        story.id,
-        AcceptRecommendationInput(
-            finding_id="MAC-CUSTOM",
-            custom_text="Khi tài khoản bị khóa thì không cho phép đăng nhập",
-        ),
-    )
-    assert updated_custom.version == 3
-    assert len(updated_custom.acceptance_criteria) == 4
-    assert updated_custom.acceptance_criteria[3] == (
-        "AC-04: Khi tài khoản bị khóa thì không cho phép đăng nhập"
-    )
+    # Replay is idempotent even though accepting the AC made this review stale.
+    replay = accept_story_recommendation(mem_session, story.id, AcceptRecommendationInput(
+        finding_id="MAC-1", review_id=review.id, expected_story_version=1,
+        custom_text="Khi Customer truy cập /admin, hệ thống từ chối truy cập",
+        expected_result="HTTP 403", confirmed_by="QA",
+    ))
+    assert replay.version == 2
+    assert len(replay.acceptance_criteria) == 3
 
 
 def test_batch_coverage_decisions(mem_session):
@@ -642,8 +635,8 @@ def test_accept_question_and_assumption_as_story_ac(heal_setup, category):
     review.content = {**review.content, category: [finding.model_dump(mode="json")]}
     db.commit()
     story = accept_story_recommendation(
-        db, suite.story_id, AcceptRecommendationInput(finding_id=finding.id)
+        db, suite.story_id, AcceptRecommendationInput(finding_id=finding.id, review_id=review.id, expected_story_version=1, custom_text="Confirmed rule", expected_result="Confirmed by PO", confirmed_by="PO")
     )
     assert story.version == 2
-    assert story.acceptance_criteria[-1] == "AC-03: [Confirmed rule] Confirmed by PO"
+    assert story.acceptance_criteria[-1] == "AC-03: Confirmed rule — Confirmed by PO"
     assert suite.stale

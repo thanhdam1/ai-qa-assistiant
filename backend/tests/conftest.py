@@ -86,7 +86,13 @@ def client(review_content, test_content):
         model_name = "fake-model"
 
         async def review_requirements(self, _story):
-            return review_content
+            output = review_content.model_copy(deep=True)
+            if _story.acceptance_criteria:
+                output.existing_acceptance_criteria[0].criterion = _story.acceptance_criteria[0]
+            else:
+                output.existing_acceptance_criteria[0].criterion = _story.description
+                output.existing_acceptance_criteria[0].source_reference = _story.description
+            return output
 
         async def generate_test_cases(self, _story, _review, _api_review=None, _specification=None):
             return test_content

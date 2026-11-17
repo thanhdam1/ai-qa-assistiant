@@ -1,5 +1,7 @@
+import inspect
 import json
 import logging
+import re
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select, update
@@ -19,23 +21,29 @@ from app.schemas import (
     ApiContractReviewContent,
     ApiOperationSummary,
     BatchCoverageDecisionInput,
-    CoverageEntry,
-    CoverageDecisionInput,
-    CoverageAcceptanceInput,
     CaseReadinessInput,
+    CoverageAcceptanceInput,
+    CoverageDecisionInput,
+    CoverageEntry,
     CoverageStatus,
     CoverageTargetType,
     ExistingCriterion,
-    RequirementReviewContent,
+    FindingClassification,
     RequirementObligation,
+    RequirementReviewContent,
     StoryCreate,
     StoryUpdate,
-    TestCaseType,
     TestCaseSetContent,
+    TestCaseType,
 )
 from app.services.ai import AIProvider
 from app.services.dependency_graph import extract_upstream_contracts
-from app.services.identity import acceptance_criterion_sources, criterion_source_id, fingerprint, normalized_text
+from app.services.identity import (
+    acceptance_criterion_sources,
+    criterion_source_id,
+    fingerprint,
+    normalized_text,
+)
 from app.services.openapi_parser import is_valid_source_reference, parse_openapi
 from app.services.prompts import (
     API_CONTRACT_PROMPT_VERSION,
@@ -264,6 +272,7 @@ def _normalize_requirement_ids(
             normalized_obligations.append(
                 RequirementObligation(
                     id=obligation_id,
+                    source_quote=getattr(obligation, "source_quote", None),
                     text=text,
                     revision=obligation_revision,
                     supersedes=supersedes,
@@ -279,10 +288,88 @@ def _normalize_requirement_ids(
                 }
             )
         )
+    aliases = {old.id: new.id for old, new in zip(content.existing_acceptance_criteria, items)}
+    content = content.model_copy(deep=True)
+    for group in _finding_groups(content):
+        for finding in group:
+            finding.related_requirement_ids = [aliases.get(identifier, identifier) for identifier in finding.related_requirement_ids]
     return content.model_copy(update={"existing_acceptance_criteria": items})
 
 
-def _validate_requirement_review(content: RequirementReviewContent, story: Story | None = None) -> None:
+def _sanitize_ai_review(content: RequirementReviewContent) -> RequirementReviewContent:
+    content = content.model_copy(deep=True)
+    for item in content.existing_acceptance_criteria:
+        item.confirmed_by = None
+    for group in _finding_groups(content):
+        for item in group:
+            item.resolution_status = "open"
+            item.answer = item.resolved_by = item.accepted_ac = item.accepted_by = item.accepted_expected_result = item.owner = None
+    for item in content.missing_acceptance_criteria:
+        item.classification = FindingClassification.recommendation
+    for item in content.assumptions + content.stakeholder_questions:
+        item.classification = FindingClassification.needs_clarification
+        item.proposed_ac = None
+    # Revalidate enum types after assignment.
+    return RequirementReviewContent.model_validate(content.model_dump(mode="json"))
+
+
+def _finding_groups(content: RequirementReviewContent):
+    return (content.missing_acceptance_criteria, content.ambiguities_and_conflicts,
+            content.stakeholder_questions, content.edge_cases, content.assumptions, content.risks)
+
+
+def _validate_review_sources(content: RequirementReviewContent, story: Story) -> None:
+    sources = {item["source_id"]: item["text"] for item in acceptance_criterion_sources(story)}
+    for criterion in content.existing_acceptance_criteria:
+        source = sources.get(criterion.source_id)
+        if source is None:
+            quote = criterion.source_reference.strip('"“”\' ')
+            fields = [story.description or "", story.business_context or "", *(story.dependencies or [])]
+            if len(quote) >= 8 and any(quote in field for field in fields):
+                source = quote
+        if not source:
+            raise AppError("unverified_requirement_source", f"{criterion.id} has no verifiable story source", 422)
+        if criterion.source_quote and criterion.source_quote not in source:
+            raise AppError("invalid_source_quote", f"{criterion.id} source quote is not verbatim", 422)
+        differs = normalized_text(criterion.criterion) != normalized_text(source)
+        covered_words: set[str] = set()
+        for obligation in criterion.obligations:
+            covered_words.update(re.findall(r"\w+", normalized_text(obligation.text)))
+            if normalized_text(obligation.text) not in normalized_text(source):
+                differs = True
+            quote = obligation.source_quote or obligation.text
+            if normalized_text(quote) not in normalized_text(source):
+                differs = True
+            if obligation.source_quote and obligation.source_quote not in source:
+                raise AppError("invalid_source_quote", f"{obligation.id} quote is not in its source", 422)
+        source_words = set(re.findall(r"\w+", normalized_text(source))) - {"and", "or", "the", "và", "hoặc"}
+        if source_words - covered_words:
+            differs = True
+        if differs and not (criterion.confirmed_by or "").strip():
+            raise AppError("requirement_confirmation_required",
+                           f"{criterion.id} differs from its source; QA must confirm the interpretation and obligations", 422)
+    known_ids = {item.id for item in content.existing_acceptance_criteria}
+    for group in _finding_groups(content):
+        for finding in group:
+            if set(finding.related_requirement_ids) - known_ids:
+                raise AppError("invalid_related_requirement", f"{finding.id} links unknown requirements", 422)
+            if finding.resolution_status == "resolved" and not (
+                (finding.answer or "").strip() and (finding.resolved_by or "").strip()
+            ):
+                raise AppError("clarification_answer_required", "Resolved findings need an answer and reviewer", 422)
+            if finding.resolution_status == "rejected" and not (
+                (finding.answer or "").strip() and (finding.resolved_by or "").strip()
+            ):
+                raise AppError("clarification_answer_required", "Rejected findings need a reason and reviewer", 422)
+            if finding.blocks_testability and finding.resolution_status == "open":
+                raise AppError("blocking_clarification", f"Resolve blocking finding {finding.id} before approval", 422)
+    if any(item.classification.value != "recommendation" for item in content.missing_acceptance_criteria):
+        raise AppError("invalid_finding_classification", "Missing ACs must be recommendations", 422)
+    if any(item.classification.value != "needs_clarification" for item in content.assumptions + content.stakeholder_questions):
+        raise AppError("invalid_finding_classification", "Questions and assumptions must need clarification", 422)
+
+
+def _validate_requirement_review(content: RequirementReviewContent, story: Story | None = None, *, verify_sources: bool = True) -> None:
     identifiers: set[str] = set()
     groups = (
         content.existing_acceptance_criteria,
@@ -337,6 +424,9 @@ def _validate_requirement_review(content: RequirementReviewContent, story: Story
                 422,
                 {"missing_source_ids": sorted(missing)},
             )
+
+    if story is not None and verify_sources:
+        _validate_review_sources(content, story)
 
 
 def _api_review_by_key(
@@ -551,47 +641,50 @@ def accept_story_recommendation(
     db: Session, story_id: str, payload: AcceptRecommendationInput
 ) -> Story:
     story = get_story(db, story_id)
-    new_ac_text = (payload.custom_text or "").strip()
-
-    if not new_ac_text:
-        latest_review = db.scalar(
-            select(RequirementReview)
-            .where(RequirementReview.story_id == story.id)
-            .order_by(RequirementReview.created_at.desc())
-        )
-        if latest_review and latest_review.content:
-            content = latest_review.content
-            for category in [
-                "missing_acceptance_criteria",
-                "edge_cases",
-                "ambiguities_and_conflicts",
-                "stakeholder_questions",
-                "assumptions",
-                "risks",
-            ]:
-                items = content.get(category, [])
-                for it in items:
-                    if it.get("id") == payload.finding_id:
-                        title = it.get("title", "")
-                        detail = it.get("detail", "")
-                        new_ac_text = f"[{title}] {detail}" if title and detail else (detail or title)
-                        break
-                if new_ac_text:
-                    break
-
-    if not new_ac_text:
-        raise AppError("finding_not_found", f"Could not find finding {payload.finding_id} to accept", 404)
-
-    ac_count = len(story.acceptance_criteria or []) + 1
-    if not new_ac_text.upper().startswith("AC-"):
-        formatted_ac = f"AC-{ac_count:02d}: {new_ac_text}"
-    else:
-        formatted_ac = new_ac_text
-
-    current_ac = list(story.acceptance_criteria or [])
-    current_ac.append(formatted_ac)
-
-    return update_story(db, story_id, StoryUpdate(acceptance_criteria=current_ac))
+    db.refresh(story, with_for_update=True)
+    review = get_review(db, payload.review_id)
+    if review.story_id != story.id:
+        raise NotFoundError("Requirement review")
+    content = RequirementReviewContent.model_validate(review.content)
+    finding = next((item for group in _finding_groups(content) for item in group
+                    if item.id == payload.finding_id), None)
+    if finding is None:
+        raise AppError("finding_not_found", "Finding does not exist in this review", 404)
+    text = re.sub(r"^AC-\d+\s*:\s*", "", payload.custom_text.strip(), flags=re.I)
+    outcome = payload.expected_result.strip()
+    actor = payload.confirmed_by.strip()
+    if not text or not outcome or not actor:
+        raise AppError("ac_confirmation_required", "Confirm the behavior, expected result and your name", 422)
+    if finding.accepted_ac:
+        if finding.answer == text and finding.accepted_by == actor and finding.accepted_expected_result == outcome:
+            return story
+        raise AppError("finding_already_accepted", "This finding already has an acceptance criterion", 409)
+    if review.stale or review.story_version != story.version or payload.expected_story_version != story.version:
+        raise StaleVersionError()
+    latest_id = db.scalar(select(RequirementReview.id).where(
+        RequirementReview.story_id == story.id
+    ).order_by(RequirementReview.created_at.desc()))
+    if latest_id != review.id:
+        raise StaleVersionError()
+    body = text if outcome in text else f"{text} — {outcome}"
+    def canonical(value):
+        return normalized_text(re.sub(r"^AC-\d+\s*:\s*", "", value, flags=re.I))
+    if any(canonical(ac) == canonical(body) for ac in story.acceptance_criteria or []):
+        raise AppError("duplicate_acceptance_criterion", "An equivalent acceptance criterion already exists", 409)
+    numbers = [int(match.group(1)) for ac in story.acceptance_criteria or []
+               if (match := re.match(r"AC-(\d+):", ac, re.I))]
+    number = max([len(story.acceptance_criteria or []), *numbers]) + 1
+    formatted_ac = f"AC-{number:02d}: {body}"
+    finding.accepted_ac = formatted_ac
+    finding.accepted_by = actor
+    finding.accepted_expected_result = outcome
+    finding.answer = text
+    finding.resolution_status = "resolved"
+    finding.resolved_by = actor
+    review.content = content.model_dump(mode="json")
+    return update_story(db, story_id, StoryUpdate(
+        acceptance_criteria=[*(story.acceptance_criteria or []), formatted_ac]
+    ))
 
 
 def _review_by_key(db: Session, story_id: str, key: str) -> RequirementReview | None:
@@ -609,7 +702,13 @@ async def generate_review(
     if existing:
         return existing
     story = get_story(db, story_id)
-    result = await ai.review_requirements(story)
+    source_version = story.version
+    upstream = extract_upstream_contracts(db, story.id)
+    kwargs = {"upstream_contracts": upstream} if "upstream_contracts" in inspect.signature(ai.review_requirements).parameters else {}
+    result = await ai.review_requirements(story, **kwargs)
+    db.refresh(story)
+    if story.version != source_version:
+        raise StaleVersionError()
     ai_original_content = result.model_dump(mode="json")
     prior_row = db.scalar(
         select(RequirementReview)
@@ -622,8 +721,16 @@ async def generate_review(
     prior_content = (
         RequirementReviewContent.model_validate(prior_row.content) if prior_row else None
     )
-    result = _normalize_requirement_ids(result, story, prior_content)
-    # Keep incomplete AI output as a draft so QA can repair omissions before approval.
+    result = _normalize_requirement_ids(_sanitize_ai_review(result), story, prior_content)
+    # Repair once; leave unresolved gaps visible in a draft for QA.
+    required = {item["source_id"] for item in acceptance_criterion_sources(story)}
+    missing = required - {item.source_id for item in result.existing_acceptance_criteria}
+    if missing and hasattr(ai, "repair_requirement_review"):
+        result = await ai.repair_requirement_review(story, result, sorted(missing), upstream_contracts=upstream)
+        db.refresh(story)
+        if story.version != source_version:
+            raise StaleVersionError()
+        result = _normalize_requirement_ids(_sanitize_ai_review(result), story, prior_content)
     _validate_requirement_review(result)
     review = RequirementReview(
         story_id=story.id,
@@ -656,9 +763,19 @@ def edit_review(
     story = get_story(db, review.story_id)
     if review.story_version != story.version:
         raise StaleVersionError()
-    content = _normalize_requirement_ids(
-        content, story, RequirementReviewContent.model_validate(review.content)
-    )
+    previous = RequirementReviewContent.model_validate(review.content)
+    previous_findings = {item.id: item for group in _finding_groups(previous) for item in group}
+    for group in _finding_groups(content):
+        for item in group:
+            prior = previous_findings.get(item.id)
+            item.accepted_ac = prior.accepted_ac if prior else None
+            item.accepted_by = prior.accepted_by if prior else None
+            if prior and prior.accepted_ac:
+                item.accepted_expected_result = prior.accepted_expected_result
+                item.answer = prior.answer
+                item.resolution_status = prior.resolution_status
+                item.resolved_by = prior.resolved_by
+    content = _normalize_requirement_ids(content, story, previous)
     _validate_requirement_review(content)
     review.content = content.model_dump(mode="json")
     review.status = "draft"
@@ -677,7 +794,7 @@ def approve_review(db: Session, review_id: str) -> RequirementReview:
         raise StaleVersionError()
     stored_content = RequirementReviewContent.model_validate(review.content)
     normalized_content = _normalize_requirement_ids(stored_content, story, stored_content)
-    _validate_requirement_review(normalized_content, story)
+    _validate_requirement_review(normalized_content, story, verify_sources=True)
     review.content = normalized_content.model_dump(mode="json")
     review.status = "approved"
     review.approved_at = datetime.now(UTC)
@@ -1211,7 +1328,7 @@ def _validate_test_suite_context(
     story = get_story(db, test_set.story_id)
     stored_review = RequirementReviewContent.model_validate(review_row.content)
     review = _normalize_requirement_ids(stored_review, story, stored_review)
-    _validate_requirement_review(review, story)
+    _validate_requirement_review(review, story, verify_sources=getattr(review_row, "prompt_version", "") == REVIEW_PROMPT_VERSION)
     original = RequirementReviewContent.model_validate(review_row.ai_original)
     legacy_ids = {item.id for item in original.existing_acceptance_criteria}
     api_review = None
@@ -1256,7 +1373,7 @@ async def generate_test_set(
         raise StaleVersionError()
     stored_review = RequirementReviewContent.model_validate(review.content)
     review_content = _normalize_requirement_ids(stored_review, story, stored_review)
-    _validate_requirement_review(review_content, story)
+    _validate_requirement_review(review_content, story, verify_sources=review.prompt_version == REVIEW_PROMPT_VERSION)
     current_api_spec = db.scalar(
         select(ApiSpecification)
         .where(ApiSpecification.story_id == story.id, ApiSpecification.stale.is_(False))
@@ -1412,7 +1529,7 @@ async def heal_test_set_coverage_gaps(
     review_row = get_review(db, test_set.review_id)
     stored_review = RequirementReviewContent.model_validate(review_row.content)
     review = _normalize_requirement_ids(stored_review, story, stored_review)
-    _validate_requirement_review(review, story)
+    _validate_requirement_review(review, story, verify_sources=review_row.prompt_version == REVIEW_PROMPT_VERSION)
 
     current_suite = TestCaseSetContent.model_validate(test_set.content)
 

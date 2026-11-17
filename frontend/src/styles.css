@@ -3807,3 +3807,5 @@
 
 
 
+
+.ac-confirmation,.requirement-editor{display:grid;gap:12px;width:100%;padding:16px;background:#f8faf7;border:1px solid var(--line);border-radius:10px}.ac-confirmation label,.requirement-editor label{display:grid;gap:6px;font-size:12px}.ac-confirmation textarea,.requirement-editor textarea,.ac-confirmation input,.requirement-editor input,.requirement-editor select{width:100%;box-sizing:border-box;padding:8px;border:1px solid #bdc8c0;border-radius:6px}.requirement-editor fieldset{display:grid;gap:10px;border:1px solid var(--line);margin:12px 0;padding:12px;min-width:0}.requirement-editor input[type=checkbox]{width:auto}.finding>div:has(.ac-confirmation){flex-wrap:wrap}.ac-confirmation blockquote{white-space:pre-wrap;overflow-wrap:anywhere}

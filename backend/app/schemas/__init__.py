@@ -28,6 +28,17 @@ class Priority(str, Enum):
 
 
 class ReviewItem(BaseModel):
+    proposed_ac: str | None = None
+    resolution_status: Literal["open", "resolved", "rejected"] = "open"
+    answer: str | None = None
+    owner: str | None = None
+    blocks_testability: bool = False
+    related_requirement_ids: list[str] = Field(default_factory=list)
+    resolved_by: str | None = None
+    accepted_ac: str | None = None
+    accepted_by: str | None = None
+    accepted_expected_result: str | None = None
+
     id: str = Field(min_length=1, max_length=80)
     title: str = Field(min_length=1, max_length=240)
     detail: str = Field(min_length=1)
@@ -40,6 +51,8 @@ class ReviewItem(BaseModel):
 
 
 class RequirementObligation(BaseModel):
+    source_quote: str | None = None
+
     id: str = Field(min_length=1, max_length=100)
     text: str = Field(min_length=1)
     revision: int = Field(default=1, ge=1)
@@ -47,6 +60,9 @@ class RequirementObligation(BaseModel):
 
 
 class ExistingCriterion(BaseModel):
+    source_quote: str | None = None
+    confirmed_by: str | None = None
+
     id: str = Field(min_length=1, max_length=80)
     criterion: str = Field(min_length=1)
     source_reference: str
@@ -291,7 +307,11 @@ class StoryUpdate(BaseModel):
 
 class AcceptRecommendationInput(BaseModel):
     finding_id: str = Field(min_length=1, max_length=100)
-    custom_text: str | None = Field(default=None, max_length=1000)
+    review_id: str
+    expected_story_version: int = Field(ge=1)
+    custom_text: str = Field(min_length=1, max_length=1000)
+    expected_result: str = Field(min_length=1, max_length=1000)
+    confirmed_by: str = Field(min_length=1, max_length=120)
 
 
 class StoryRead(StoryBase):

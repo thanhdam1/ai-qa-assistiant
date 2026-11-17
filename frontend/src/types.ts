@@ -4,9 +4,14 @@ export type TestType = 'positive' | 'negative' | 'boundary' | 'integration'
 export type FindingClassification = 'requirement' | 'recommendation' | 'needs_clarification'
 export type ApiFindingType = 'positive' | 'negative' | 'boundary' | 'schema' | 'security' | 'gap' | 'conflict'
 
-export interface ReviewItem { id: string; title: string; detail: string; severity: Severity; source_reference: string; classification: FindingClassification }
-export interface ExistingCriterion { id: string; criterion: string; source_reference: string; source_id?: string | null; revision?: number; obligations: RequirementObligation[] }
-export interface RequirementObligation { id: string; text: string; revision?: number; supersedes?: string[] }
+export interface ReviewItem {
+  proposed_ac?: string | null; resolution_status?: 'open' | 'resolved' | 'rejected'
+  answer?: string | null; owner?: string | null; blocks_testability?: boolean
+  related_requirement_ids?: string[]; resolved_by?: string | null
+  accepted_ac?: string | null; accepted_by?: string | null
+  id: string; title: string; detail: string; severity: Severity; source_reference: string; classification: FindingClassification }
+export interface ExistingCriterion { source_quote?: string | null; confirmed_by?: string | null; id: string; criterion: string; source_reference: string; source_id?: string | null; revision?: number; obligations: RequirementObligation[] }
+export interface RequirementObligation { source_quote?: string | null; id: string; text: string; revision?: number; supersedes?: string[] }
 export interface ReviewContent {
   language: 'vi' | 'en'; business_summary: string
   existing_acceptance_criteria: ExistingCriterion[]

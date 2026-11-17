@@ -40,10 +40,10 @@ export const api = {
   createStory: (body: Omit<Story, 'id' | 'version' | 'created_at' | 'updated_at'>) =>
     request<Story>('/stories', { method: 'POST', body: JSON.stringify(body) }),
   updateStory: (id: string, body: Partial<Story>) => request<Story>(`/stories/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  acceptRecommendation: (storyId: string, findingId: string, customText?: string) =>
+  acceptRecommendation: (storyId: string, findingId: string, reviewId: string, expectedStoryVersion: number, customText: string, expectedResult: string, confirmedBy: string) =>
     request<Story>(`/stories/${storyId}/accept-recommendation`, {
       method: 'POST',
-      body: JSON.stringify({ finding_id: findingId, custom_text: customText }),
+      body: JSON.stringify({ finding_id: findingId, review_id: reviewId, expected_story_version: expectedStoryVersion, custom_text: customText, expected_result: expectedResult, confirmed_by: confirmedBy }),
     }),
   uploadApiSpecification: (storyId: string, file: File) => {
     const form = new FormData(); form.append('file', file)

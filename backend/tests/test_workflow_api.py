@@ -1,3 +1,5 @@
+import pytest
+
 def create_story(client):
     response = client.post(
         "/api/stories",
@@ -82,3 +84,55 @@ def test_export_json_and_csv(client):
     csv_response = client.get(f"/api/requirement-reviews/{review['id']}/export?format=csv")
     assert csv_response.status_code == 200
     assert csv_response.content.startswith(b"\xef\xbb\xbf")
+
+
+def recommendation_setup(client):
+    story = create_story(client)
+    review = client.post(f"/api/stories/{story['id']}/requirement-reviews",
+                         headers={"Idempotency-Key": "ac-confirmation-review"}).json()
+    payload = dict(finding_id=review['content']['missing_acceptance_criteria'][0]['id'],
+                   review_id=review['id'], expected_story_version=story['version'],
+                   custom_text='When a valid product detail page is opened',
+                   expected_result='view_count increases by 1', confirmed_by='PO')
+    return story, review, payload
+
+
+def test_confirmed_ac_does_not_copy_analysis_and_replay_is_idempotent(client):
+    story, review, payload = recommendation_setup(client)
+    url = f"/api/stories/{story['id']}/accept-recommendation"
+    response = client.post(url, json=payload)
+    assert response.status_code == 200, response.text
+    assert response.json()['acceptance_criteria'][-1] == 'AC-02: When a valid product detail page is opened — view_count increases by 1'
+    assert client.post(url, json=payload).json()['version'] == 2
+    history = client.get(f"/api/stories/{story['id']}").json()['reviews'][0]
+    finding = history['content']['missing_acceptance_criteria'][0]
+    assert finding['accepted_by'] == 'PO'
+    assert finding['accepted_ac'] == response.json()['acceptance_criteria'][-1]
+    assert history['stale']
+
+
+def test_acceptance_rejects_stale_review_and_unknown_finding(client):
+    story, review, payload = recommendation_setup(client)
+    url = f"/api/stories/{story['id']}/accept-recommendation"
+    missing = client.post(url, json={**payload, 'finding_id': 'FAKE'})
+    assert missing.status_code == 404
+    client.patch(f"/api/stories/{story['id']}", json={'business_context': 'New rules'})
+    stale = client.post(url, json=payload)
+    assert stale.status_code == 409
+    assert stale.json()['error']['code'] == 'stale_version'
+
+
+@pytest.mark.parametrize('field', ['custom_text', 'expected_result', 'confirmed_by'])
+def test_acceptance_requires_nonblank_confirmation(client, field):
+    story, _, payload = recommendation_setup(client)
+    response = client.post(f"/api/stories/{story['id']}/accept-recommendation", json={**payload, field: ' '})
+    assert response.status_code == 422
+
+
+def test_acceptance_rejects_duplicate_text_from_other_finding(client):
+    story, review, payload = recommendation_setup(client)
+    payload['custom_text'] = story['acceptance_criteria'][0]
+    payload['expected_result'] = story['acceptance_criteria'][0]
+    response = client.post(f"/api/stories/{story['id']}/accept-recommendation", json=payload)
+    assert response.status_code == 409
+    assert response.json()['error']['code'] == 'duplicate_acceptance_criterion'
