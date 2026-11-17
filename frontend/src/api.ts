@@ -40,6 +40,11 @@ export const api = {
   createStory: (body: Omit<Story, 'id' | 'version' | 'created_at' | 'updated_at'>) =>
     request<Story>('/stories', { method: 'POST', body: JSON.stringify(body) }),
   updateStory: (id: string, body: Partial<Story>) => request<Story>(`/stories/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  acceptRecommendation: (storyId: string, findingId: string, customText?: string) =>
+    request<Story>(`/stories/${storyId}/accept-recommendation`, {
+      method: 'POST',
+      body: JSON.stringify({ finding_id: findingId, custom_text: customText }),
+    }),
   uploadApiSpecification: (storyId: string, file: File) => {
     const form = new FormData(); form.append('file', file)
     return request<ApiSpecification>(`/stories/${storyId}/api-specifications`, { method: 'POST', body: form })
@@ -60,6 +65,10 @@ export const api = {
   updateTests: (id: string, content: TestContent) => request<TestSet>(`/test-case-sets/${id}`, { method: 'PATCH', body: JSON.stringify({ content }) }),
   approveTests: (id: string) => request<TestSet>(`/test-case-sets/${id}/approve`, { method: 'POST', body: '{}' }),
   decideCoverage: (id: string, body: Pick<CoverageDecision, 'target_type' | 'target_id' | 'disposition' | 'decided_by' | 'assertion_case_id' | 'assertion' | 'reason' | 'owner'>) => request<TestSet>(`/test-case-sets/${id}/coverage-decisions`, { method: 'PUT', body: JSON.stringify(body) }),
+  decideBatchCoverage: (id: string, decisions: Pick<CoverageDecision, 'target_type' | 'target_id' | 'disposition' | 'decided_by' | 'assertion_case_id' | 'assertion' | 'reason' | 'owner'>[]) =>
+    request<TestSet>(`/test-case-sets/${id}/batch-coverage-decisions`, { method: 'PUT', body: JSON.stringify({ decisions }) }),
+  healCoverageGaps: (id: string) =>
+    request<TestSet>(`/test-case-sets/${id}/heal-gaps`, { method: 'POST', body: '{}' }),
   acceptCoverage: (id: string, accepted_by: string) => request<TestSet>(`/test-case-sets/${id}/coverage-accept`, { method: 'POST', body: JSON.stringify({ accepted_by }) }),
   assessCaseReadiness: (id: string, caseId: string, body: Pick<CaseReadiness, 'assessed_by' | 'environment_ready' | 'test_data_ready' | 'verification_ready' | 'note'>) => request<TestSet>(`/test-case-sets/${id}/cases/${caseId}/readiness`, { method: 'PUT', body: JSON.stringify(body) }),
   exportUrl: (kind: 'requirement-reviews' | 'api-contract-reviews' | 'test-case-sets', id: string, format: 'json' | 'csv' | 'xlsx') => `${BASE}/${kind}/${id}/export?format=${format}`,

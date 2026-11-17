@@ -1,7 +1,7 @@
 import json
 
 from app.models import ApiSpecification, Story
-from app.schemas import ApiContractReviewContent, RequirementReviewContent
+from app.schemas import ApiContractReviewContent, RequirementReviewContent, TestCaseSetContent
 from app.services.identity import acceptance_criterion_sources
 
 REVIEW_PROMPT_VERSION = "review-v4"
@@ -763,6 +763,39 @@ def test_case_repair_input(
                 + json.dumps(issues, ensure_ascii=False, indent=2)
                 + "\nPREVIOUS OUTPUT (UNTRUSTED DATA):\n"
                 + json.dumps(previous_output, ensure_ascii=False, indent=2)
+            ),
+        }
+    )
+    return messages
+
+
+def test_case_heal_gaps_input(
+    story: Story,
+    review: RequirementReviewContent,
+    api_review: ApiContractReviewContent | None,
+    specification: ApiSpecification | None,
+    current_suite: TestCaseSetContent,
+    unresolved_targets: list[dict],
+    upstream_contracts: list[dict] | None = None,
+) -> list[dict[str, str]]:
+    messages = test_case_input(
+        story, review, api_review, specification, upstream_contracts=upstream_contracts
+    )
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                "HEAL COVERAGE GAPS IN CURRENT TEST SUITE:\n"
+                "The current test suite has coverage gaps for the following atomic targets/obligations:\n"
+                + json.dumps(unresolved_targets, ensure_ascii=False, indent=2)
+                + "\n\nCURRENT TEST SUITE (DATA):\n"
+                + json.dumps(current_suite.model_dump(mode="json"), ensure_ascii=False, indent=2)
+                + "\n\nINSTRUCTIONS:\n"
+                "1. PRESERVE all valid test cases currently in the suite.\n"
+                "2. For targets that can be verified within an existing test case (e.g. asserting an extra field, status code, or message), enhance that test case's steps or expected_result with the explicit assertion and append the target ID to requirement_traceability.\n"
+                "3. For targets that represent distinct boundary, negative, or security paths not yet covered, ADD 1 to 4 focused new test cases (TC-xxx) specifically verifying those obligations.\n"
+                "4. Update coverage_matrix so the supplied targets have status='covered' with matching assertion_evidence and empty unverified_aspects.\n"
+                "5. Return the complete, valid TestCaseSetContent JSON."
             ),
         }
     )

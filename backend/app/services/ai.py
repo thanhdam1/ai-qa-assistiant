@@ -13,6 +13,7 @@ from app.services.prompts import (
     api_contract_review_input,
     api_contract_review_repair_input,
     requirement_review_input,
+    test_case_heal_gaps_input,
     test_case_input,
     test_case_repair_input,
     valid_traceability_ids,
@@ -107,6 +108,17 @@ class AIProvider(Protocol):
         specification: ApiSpecification | None,
         previous_output: TestCaseSetContent,
         issues: list[dict],
+        upstream_contracts: list[dict] | None = None,
+    ) -> TestCaseSetContent: ...
+
+    async def heal_coverage_gaps(
+        self,
+        story: Story,
+        review: RequirementReviewContent,
+        api_review: ApiContractReviewContent | None,
+        specification: ApiSpecification | None,
+        current_suite: TestCaseSetContent,
+        unresolved_targets: list[dict],
         upstream_contracts: list[dict] | None = None,
     ) -> TestCaseSetContent: ...
 
@@ -211,6 +223,18 @@ class OpenAIProvider:
             test_case_repair_input(
                 story, review, api_review, specification,
                 previous_output.model_dump(mode="json"), issues,
+                upstream_contracts=upstream_contracts,
+            ),
+            TestCaseSetContent,
+        )
+
+    async def heal_coverage_gaps(
+        self, story, review, api_review, specification, current_suite, unresolved_targets, upstream_contracts=None
+    ) -> TestCaseSetContent:
+        return await self._parse(
+            test_case_heal_gaps_input(
+                story, review, api_review, specification,
+                current_suite, unresolved_targets,
                 upstream_contracts=upstream_contracts,
             ),
             TestCaseSetContent,
@@ -433,6 +457,19 @@ class GeminiProvider:
             test_case_repair_input(
                 story, review, api_review, specification,
                 previous_output.model_dump(mode="json"), issues,
+                upstream_contracts=upstream_contracts,
+            ),
+            TestCaseSetContent,
+            traceability_ids=valid_traceability_ids(review, api_review),
+        )
+
+    async def heal_coverage_gaps(
+        self, story, review, api_review, specification, current_suite, unresolved_targets, upstream_contracts=None
+    ) -> TestCaseSetContent:
+        return await self._parse(
+            test_case_heal_gaps_input(
+                story, review, api_review, specification,
+                current_suite, unresolved_targets,
                 upstream_contracts=upstream_contracts,
             ),
             TestCaseSetContent,

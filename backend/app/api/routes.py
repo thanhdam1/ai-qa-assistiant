@@ -7,10 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas import (
+    AcceptRecommendationInput,
     ApiContractReviewContent,
     ApiContractReviewRead,
     ApiSpecificationRead,
     AsyncJobRead,
+    BatchCoverageDecisionInput,
     ReSyncJobResponse,
     ResolveConflictPayload,
     RequirementReviewRead,
@@ -62,10 +64,12 @@ from app.services.export import (
     zero_gap_suite_excel,
 )
 from app.services.workflow import (
+    accept_story_recommendation,
     approve_api_contract_review,
     approve_review,
     approve_test_set,
     decide_coverage_target,
+    decide_batch_coverage_targets,
     accept_coverage,
     assess_case_readiness,
     create_api_specification,
@@ -76,6 +80,7 @@ from app.services.workflow import (
     generate_review,
     generate_api_contract_review,
     generate_test_set,
+    heal_test_set_coverage_gaps,
     get_review,
     get_api_contract_review,
     get_story,
@@ -119,6 +124,13 @@ def stories_get(story_id: str, db: Db):
 @router.patch("/stories/{story_id}", response_model=StoryRead)
 def stories_update(story_id: str, payload: StoryUpdate, db: Db):
     return update_story(db, story_id, payload)
+
+
+@router.post("/stories/{story_id}/accept-recommendation", response_model=StoryRead)
+def stories_accept_recommendation(
+    story_id: str, payload: AcceptRecommendationInput, db: Db
+):
+    return accept_story_recommendation(db, story_id, payload)
 
 
 @router.post(
@@ -277,6 +289,18 @@ def test_case_sets_approve(test_set_id: str, db: Db):
 @router.put("/test-case-sets/{test_set_id}/coverage-decisions", response_model=TestCaseSetRead)
 def test_case_sets_decide_coverage(test_set_id: str, payload: CoverageDecisionInput, db: Db):
     return decide_coverage_target(db, test_set_id, payload)
+
+
+@router.put("/test-case-sets/{test_set_id}/batch-coverage-decisions", response_model=TestCaseSetRead)
+def test_case_sets_decide_batch_coverage(
+    test_set_id: str, payload: BatchCoverageDecisionInput, db: Db
+):
+    return decide_batch_coverage_targets(db, test_set_id, payload)
+
+
+@router.post("/test-case-sets/{test_set_id}/heal-gaps", response_model=TestCaseSetRead)
+async def test_case_sets_heal_gaps(test_set_id: str, db: Db, ai: AI):
+    return await heal_test_set_coverage_gaps(db, test_set_id, ai)
 
 
 @router.post("/test-case-sets/{test_set_id}/coverage-accept", response_model=TestCaseSetRead)

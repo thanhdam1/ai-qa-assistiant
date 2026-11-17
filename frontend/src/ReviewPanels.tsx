@@ -358,8 +358,59 @@ export function StoryForm({ initial, onSave, onCancel, busy }: { initial?: Story
   </div>
 }
 
-function FindingList({ title, items }: { title: string; items: ReviewItem[] }) {
-  return <section className="finding-section"><div className="section-title"><h3>{title}</h3><span>{items.length}</span></div>{items.length === 0 ? <p className="empty">Không có phát hiện.</p> : <div className="finding-grid">{items.map(item => <article className="finding" key={item.id}><div><span className={`severity severity-${item.severity}`}>{item.severity}</span><code>{item.id}</code><span className={`classification classification-${item.classification}`}>{item.classification === 'requirement' ? 'Requirement' : item.classification === 'recommendation' ? 'Đề xuất AI' : 'Cần xác nhận'}</span></div><h4>{item.title}</h4><p>{item.detail}</p><small>Nguồn: {item.source_reference}</small></article>)}</div>}</section>
+function FindingList({
+  title,
+  items,
+  onAcceptFinding,
+  busy,
+}: {
+  title: string
+  items: ReviewItem[]
+  onAcceptFinding?: (item: ReviewItem) => Promise<void>
+  busy?: boolean
+}) {
+  return (
+    <section className="finding-section">
+      <div className="section-title">
+        <h3>{title}</h3>
+        <span>{items.length}</span>
+      </div>
+      {items.length === 0 ? (
+        <p className="empty">Không có phát hiện.</p>
+      ) : (
+        <div className="finding-grid">
+          {items.map(item => (
+            <article className="finding" key={item.id}>
+              <div>
+                <span className={`severity severity-${item.severity}`}>{item.severity}</span>
+                <code>{item.id}</code>
+                <span className={`classification classification-${item.classification}`}>
+                  {item.classification === 'requirement' ? 'Requirement' : item.classification === 'recommendation' ? 'Đề xuất AI' : 'Cần xác nhận'}
+                </span>
+              </div>
+              <h4>{item.title}</h4>
+              <p>{item.detail}</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '10px' }}>
+                <small>Nguồn: {item.source_reference}</small>
+                {onAcceptFinding && item.classification !== 'requirement' && (
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    style={{ fontSize: '11px', padding: '4px 9px', display: 'inline-flex', alignItems: 'center', gap: '4px', height: 'auto', whiteSpace: 'nowrap' }}
+                    disabled={busy}
+                    onClick={() => void onAcceptFinding(item)}
+                    title="Thêm đề xuất này vào danh sách Acceptance Criteria của Story"
+                  >
+                    <Plus size={13} /> Thêm vào Story AC
+                  </button>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  )
 }
 
 function JsonEditor<T>({ value, onSave, onCancel, busy }: { value: T; onSave: (value: T) => Promise<void>; onCancel: () => void; busy: boolean }) {
@@ -367,7 +418,7 @@ function JsonEditor<T>({ value, onSave, onCancel, busy }: { value: T; onSave: (v
   return <div className="json-editor"><p>Chỉnh sửa dữ liệu có cấu trúc. API sẽ kiểm tra schema trước khi lưu.</p><textarea value={text} rows={26} spellCheck={false} onChange={e => setText(e.target.value)} />{error && <small className="field-error">{error}</small>}<div className="actions"><Button variant="ghost" onClick={onCancel}>Huỷ</Button><Button busy={busy} onClick={async () => { try { await onSave(JSON.parse(text) as T) } catch (e) { setError(e instanceof SyntaxError ? 'JSON không hợp lệ.' : String(e)) } }}><Save size={17} /> Lưu thay đổi</Button></div></div>
 }
 
-export function ReviewPanel({ review, sourceCriteria, onApprove, onSave, onGenerateTests, onRegenerate, apiReviewId, requiresApiReview, busy }: { review: Review; sourceCriteria: string[]; onApprove: () => Promise<void>; onSave: (c: ReviewContent) => Promise<void>; onGenerateTests: () => Promise<void>; onRegenerate: () => Promise<void>; apiReviewId?: string; requiresApiReview: boolean; busy: string }) {
+export function ReviewPanel({ review, sourceCriteria, onApprove, onSave, onGenerateTests, onRegenerate, onAcceptFinding, apiReviewId, requiresApiReview, busy }: { review: Review; sourceCriteria: string[]; onApprove: () => Promise<void>; onSave: (c: ReviewContent) => Promise<void>; onGenerateTests: () => Promise<void>; onRegenerate: () => Promise<void>; onAcceptFinding?: (item: ReviewItem) => Promise<void>; apiReviewId?: string; requiresApiReview: boolean; busy: string }) {
   const [editing, setEditing] = useState(false)
   return <div className="card"><div className="card-heading"><div><span className="eyebrow">Requirement review · v{review.story_version}</span><h2>Phân tích yêu cầu</h2></div><StatusBadge status={review.status} stale={review.stale} /></div>
     {editing ? <JsonEditor value={review.content} busy={busy === 'save-review'} onCancel={() => setEditing(false)} onSave={async c => { await onSave(c); setEditing(false) }} /> : <>
@@ -377,7 +428,7 @@ export function ReviewPanel({ review, sourceCriteria, onApprove, onSave, onGener
       {apiReviewId && <p className="coverage">Bộ test tiếp theo sẽ kết hợp API Contract Review đã duyệt.</p>}
       {requiresApiReview && !apiReviewId && <p className="notice">Duyệt API Contract Review hiện tại trước khi sinh test cho story này.</p>}
       <section className="finding-section"><div className="section-title"><h3>Acceptance criteria hiện có</h3><span>{review.content.existing_acceptance_criteria.length}</span></div><div className="criteria-list">{review.content.existing_acceptance_criteria.map(x => <div key={x.id}><code>{x.id}</code><span>{x.criterion}</span><small>{(x.obligations ?? []).map(item => item.text).join(' · ')}</small></div>)}</div></section>
-      {sectionLabels.map(([key, label]) => <FindingList key={key} title={label} items={review.content[key] as ReviewItem[]} />)}
+      {sectionLabels.map(([key, label]) => <FindingList key={key} title={label} items={review.content[key] as ReviewItem[]} onAcceptFinding={onAcceptFinding} busy={Boolean(busy)} />)}
       <div className="actions split"><div><a className="button button-ghost" href={api.exportUrl('requirement-reviews', review.id, 'json')}><Download size={16} /> JSON</a><a className="button button-ghost" href={api.exportUrl('requirement-reviews', review.id, 'csv')}><Download size={16} /> CSV</a></div><div>{review.stale ? <Button busy={busy === 'generate-review'} onClick={onRegenerate}><RefreshCw size={16} /> Phân tích version hiện tại</Button> : <><Button variant="ghost" onClick={() => setEditing(true)}><Pencil size={16} /> Chỉnh sửa</Button>{review.status !== 'approved' && <Button busy={busy === 'approve-review'} onClick={onApprove}><Check size={17} /> Phê duyệt</Button>}{review.status === 'approved' && <Button busy={busy === 'generate-tests'} disabled={requiresApiReview && !apiReviewId} onClick={onGenerateTests}><FlaskConical size={17} /> Sinh test case</Button>}</>}</div></div>
     </>}
   </div>

@@ -289,6 +289,11 @@ class StoryUpdate(BaseModel):
     language: Literal["auto", "vi", "en"] | None = None
 
 
+class AcceptRecommendationInput(BaseModel):
+    finding_id: str = Field(min_length=1, max_length=100)
+    custom_text: str | None = Field(default=None, max_length=1000)
+
+
 class StoryRead(StoryBase):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -335,6 +340,10 @@ class CoverageDecisionInput(BaseModel):
     assertion: str | None = None
     reason: str | None = None
     owner: str | None = None
+
+
+class BatchCoverageDecisionInput(BaseModel):
+    decisions: list[CoverageDecisionInput] = Field(default_factory=list)
 
 
 class CoverageAcceptanceInput(BaseModel):

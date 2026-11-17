@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, ArrowUpRight, Check, CheckCircle2, ChevronRight, Download, FileSearch, FileSpreadsheet, Filter, Link2, ListChecks, Pencil, Search, X } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, Check, CheckCircle2, ChevronRight, Download, FileSearch, FileSpreadsheet, Filter, Link2, ListChecks, Pencil, Search, Sparkles, X } from 'lucide-react'
 import { api } from './api'
 import { ReadinessRow, SuiteAssessment, TargetDecision } from './SuiteAssessment'
 import { currentDecisions, hasDesignEvidence, isCaseReady, targetDescription, targetLabels, typeLabels } from './qaView'
@@ -11,6 +11,8 @@ type Props = {
   onViewChange: (view: 'tests' | 'coverage') => void
   onSave: (content: TestContent) => Promise<void>; onApprove: () => Promise<void>
   onDecide: AssessmentProps['onDecide']; onAccept: AssessmentProps['onAccept']; onAssess: AssessmentProps['onAssess']
+  onBatchDecide?: (decisions: Parameters<typeof api.decideBatchCoverage>[1]) => Promise<void>
+  onHealGaps?: () => Promise<void>
 }
 
 function Basis({ test }: { test: TestCase }) {
@@ -21,7 +23,7 @@ function TextList({ items, empty }: { items: string[]; empty: string }) {
   return items.length ? <ul className="evidence-list">{items.map((item, index) => <li key={index}>{item}</li>)}</ul> : <p className="muted">{empty}</p>
 }
 
-export function TestWorkbench({ testSet, workspace, view, busy, onViewChange, onSave, onApprove, onDecide, onAccept, onAssess }: Props) {
+export function TestWorkbench({ testSet, workspace, view, busy, onViewChange, onSave, onApprove, onDecide, onAccept, onAssess, onBatchDecide, onHealGaps }: Props) {
   const [query, setQuery] = useState('')
   const [type, setType] = useState<TestType | 'all'>('all')
   const [basis, setBasis] = useState('all')
@@ -215,10 +217,87 @@ export function TestWorkbench({ testSet, workspace, view, busy, onViewChange, on
           </div>
         </section>}
       </div>
-      {view === 'coverage' && <div className="coverage-acceptance">
-        <div><strong>{testSet.coverage_acceptance_status === 'accepted' ? 'Phạm vi coverage đã được chấp nhận' : `${unresolved.length} mục tiêu chưa có quyết định QA`}</strong><p>Chấp nhận phạm vi cần nội dung đã duyệt và quyết định cho từng mục tiêu. Đây chưa phải kết quả thực thi.</p></div>
-        <div className="acceptance-controls"><input aria-label="Người chấp nhận phạm vi" placeholder="Tên người chấp nhận" value={actor} onChange={event => setActor(event.target.value)} /><button className="button" disabled={Boolean(busy) || testSet.stale || testSet.review_status !== 'approved' || !actor.trim() || unresolved.length > 0 || testSet.coverage_acceptance_status === 'accepted'} onClick={() => void onAccept(actor.trim())}><Check size={15} /> Chấp nhận phạm vi</button></div>
-      </div>}
+      {view === 'coverage' && (
+        <div className="coverage-acceptance" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div>
+              <strong>{testSet.coverage_acceptance_status === 'accepted' ? 'Phạm vi coverage đã được chấp nhận' : `${unresolved.length} mục tiêu chưa có quyết định QA`}</strong>
+              <p style={{ margin: '4px 0 0' }}>Chấp nhận phạm vi cần nội dung đã duyệt và quyết định cho từng mục tiêu. Đây chưa phải kết quả thực thi.</p>
+            </div>
+            {unresolved.length > 0 && onBatchDecide && (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="button button-ghost"
+                  disabled={Boolean(busy) || testSet.stale || !actor.trim()}
+                  onClick={() => {
+                    const autoCandidates = unresolved.filter(row => row.status === 'covered' && (row.assertion_evidence?.length ?? 0) > 0 && !(row.unverified_aspects?.length ?? 0))
+                    if (!autoCandidates.length) {
+                      alert('Không có mục tiêu nào đủ điều kiện tự động xác nhận (cần có assertion và không có unverified aspects).')
+                      return
+                    }
+                    const batch = autoCandidates.map(r => ({
+                      target_type: r.target_type,
+                      target_id: r.target_id,
+                      disposition: 'confirmed' as const,
+                      decided_by: actor.trim(),
+                      assertion_case_id: r.assertion_evidence![0].test_case_id,
+                      assertion: r.assertion_evidence![0].assertion,
+                      reason: null,
+                      owner: null,
+                    }))
+                    void onBatchDecide(batch)
+                  }}
+                  title="Tự động xác nhận tất cả các mục tiêu đã có assertion và không có khoảng trống"
+                >
+                  ⚡ Tự động xác nhận ({unresolved.filter(r => r.status === 'covered' && (r.assertion_evidence?.length ?? 0) > 0 && !(r.unverified_aspects?.length ?? 0)).length})
+                </button>
+                <button
+                  type="button"
+                  className="button button-ghost"
+                  disabled={Boolean(busy) || testSet.stale || !actor.trim()}
+                  onClick={() => {
+                    const reason = prompt('Nhập lý do chấp nhận rủi ro hàng loạt cho các gap còn lại:', 'Ràng buộc kỹ thuật ngầm / Đã kiểm chứng tại tầng Unit Test & Schema')
+                    if (!reason || !reason.trim()) return
+                    const batch = unresolved.map(r => ({
+                      target_type: r.target_type,
+                      target_id: r.target_id,
+                      disposition: 'accepted_risk' as const,
+                      decided_by: actor.trim(),
+                      assertion_case_id: null,
+                      assertion: null,
+                      reason: reason.trim(),
+                      owner: null,
+                    }))
+                    void onBatchDecide(batch)
+                  }}
+                  title="Chấp nhận rủi ro cho toàn bộ các mục tiêu chưa có quyết định"
+                >
+                  🛡️ Chấp nhận rủi ro hàng loạt ({unresolved.length})
+                </button>
+                {onHealGaps && (
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    style={{ borderColor: '#6366f1', color: '#4f46e5', fontWeight: 600 }}
+                    disabled={Boolean(busy) || testSet.stale}
+                    onClick={() => void onHealGaps()}
+                    title="Yêu cầu AI tự động thêm assertions và test case bổ sung cho các mục tiêu còn thiếu"
+                  >
+                    <Sparkles size={15} /> 🪄 Tự động bù đắp Gaps ({unresolved.length})
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="acceptance-controls">
+            <input aria-label="Người chấp nhận phạm vi" placeholder="Tên người chấp nhận / QA" value={actor} onChange={event => setActor(event.target.value)} />
+            <button className="button" disabled={Boolean(busy) || testSet.stale || testSet.review_status !== 'approved' || !actor.trim() || unresolved.length > 0 || testSet.coverage_acceptance_status === 'accepted'} onClick={() => void onAccept(actor.trim())}>
+              <Check size={15} /> Chấp nhận phạm vi
+            </button>
+          </div>
+        </div>
+      )}
     </>}
   </section>
 }

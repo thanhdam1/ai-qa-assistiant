@@ -15,8 +15,10 @@ from app.errors import (
 )
 from app.models import ApiContractReview, ApiSpecification, RequirementReview, Story, TestCaseSet
 from app.schemas import (
+    AcceptRecommendationInput,
     ApiContractReviewContent,
     ApiOperationSummary,
+    BatchCoverageDecisionInput,
     CoverageEntry,
     CoverageDecisionInput,
     CoverageAcceptanceInput,
@@ -543,6 +545,51 @@ def update_story(db: Session, story_id: str, payload: StoryUpdate) -> Story:
     db.commit()
     db.refresh(story)
     return story
+
+
+def accept_story_recommendation(
+    db: Session, story_id: str, payload: AcceptRecommendationInput
+) -> Story:
+    story = get_story(db, story_id)
+    new_ac_text = (payload.custom_text or "").strip()
+
+    if not new_ac_text:
+        latest_review = db.scalar(
+            select(RequirementReview)
+            .where(RequirementReview.story_id == story.id)
+            .order_by(RequirementReview.created_at.desc())
+        )
+        if latest_review and latest_review.content:
+            content = latest_review.content
+            for category in [
+                "missing_acceptance_criteria",
+                "edge_cases",
+                "ambiguities_and_conflicts",
+                "risks",
+            ]:
+                items = content.get(category, [])
+                for it in items:
+                    if it.get("id") == payload.finding_id:
+                        title = it.get("title", "")
+                        detail = it.get("detail", "")
+                        new_ac_text = f"[{title}] {detail}" if title and detail else (detail or title)
+                        break
+                if new_ac_text:
+                    break
+
+    if not new_ac_text:
+        raise AppError("finding_not_found", f"Could not find finding {payload.finding_id} to accept", 404)
+
+    ac_count = len(story.acceptance_criteria or []) + 1
+    if not new_ac_text.upper().startswith("AC-"):
+        formatted_ac = f"AC-{ac_count:02d}: {new_ac_text}"
+    else:
+        formatted_ac = new_ac_text
+
+    current_ac = list(story.acceptance_criteria or [])
+    current_ac.append(formatted_ac)
+
+    return update_story(db, story_id, StoryUpdate(acceptance_criteria=current_ac))
 
 
 def _review_by_key(db: Session, story_id: str, key: str) -> RequirementReview | None:
@@ -1238,14 +1285,22 @@ async def generate_test_set(
             raise StaleVersionError()
         api_review_content = ApiContractReviewContent.model_validate(api_contract_review.content)
         upstream_contracts = extract_upstream_contracts(db, story.id)
-        result = await ai.generate_test_cases(
-            story, review_content, api_review_content, api_specification, upstream_contracts=upstream_contracts
-        )
+        try:
+            result = await ai.generate_test_cases(
+                story, review_content, api_review_content, api_specification, upstream_contracts=upstream_contracts
+            )
+        except TypeError:
+            result = await ai.generate_test_cases(
+                story, review_content, api_review_content, api_specification
+            )
     else:
         upstream_contracts = extract_upstream_contracts(db, story.id)
-        result = await ai.generate_test_cases(
-            story, review_content, upstream_contracts=upstream_contracts
-        )
+        try:
+            result = await ai.generate_test_cases(
+                story, review_content, upstream_contracts=upstream_contracts
+            )
+        except TypeError:
+            result = await ai.generate_test_cases(story, review_content)
     ai_original_content = result.model_dump(mode="json")
     original_review = RequirementReviewContent.model_validate(review.ai_original)
     legacy_requirement_ids = {
@@ -1301,15 +1356,25 @@ async def generate_test_set(
                     validation_details={"failures": validation_failures},
                 ) from exc
             issues = [issue]
-            result = await ai.repair_test_cases(
-                story,
-                review_content,
-                api_review_content,
-                api_specification,
-                result,
-                issues,
-                upstream_contracts=upstream_contracts,
-            )
+            try:
+                result = await ai.repair_test_cases(
+                    story,
+                    review_content,
+                    api_review_content,
+                    api_specification,
+                    result,
+                    issues,
+                    upstream_contracts=upstream_contracts,
+                )
+            except TypeError:
+                result = await ai.repair_test_cases(
+                    story,
+                    review_content,
+                    api_review_content,
+                    api_specification,
+                    result,
+                    issues,
+                )
     test_set = TestCaseSet(
         story_id=story.id,
         review_id=review.id,
@@ -1328,6 +1393,85 @@ async def generate_test_set(
         },
     )
     db.add(test_set)
+    db.commit()
+    db.refresh(test_set)
+    return test_set
+
+
+async def heal_test_set_coverage_gaps(
+    db: Session,
+    test_set_id: str,
+    ai: AIProvider,
+) -> TestCaseSet:
+    test_set = get_test_set(db, test_set_id)
+    story = get_story(db, test_set.story_id)
+    review_row = get_review(db, test_set.review_id)
+    stored_review = RequirementReviewContent.model_validate(review_row.content)
+    review = _normalize_requirement_ids(stored_review, story, stored_review)
+    _validate_requirement_review(review, story)
+
+    current_suite = TestCaseSetContent.model_validate(test_set.content)
+
+    api_review = None
+    specification = None
+    if test_set.api_contract_review_id:
+        api_row = get_api_contract_review(db, test_set.api_contract_review_id)
+        specification = get_api_specification(db, api_row.specification_id)
+        api_review = ApiContractReviewContent.model_validate(api_row.content)
+
+    unresolved_targets = []
+    for entry in current_suite.coverage_matrix:
+        if entry.target_type == CoverageTargetType.category:
+            continue
+        if entry.status != CoverageStatus.covered or entry.unverified_aspects:
+            unresolved_targets.append(
+                {
+                    "target_type": entry.target_type.value,
+                    "target_id": entry.target_id,
+                    "explanation": entry.explanation,
+                    "unverified_aspects": entry.unverified_aspects,
+                }
+            )
+
+    if not unresolved_targets:
+        return test_set
+
+    upstream_contracts = extract_upstream_contracts(db, story.id)
+
+    healed_suite = await ai.heal_coverage_gaps(
+        story,
+        review,
+        api_review,
+        specification,
+        current_suite,
+        unresolved_targets,
+        upstream_contracts=upstream_contracts,
+    )
+
+    original_review = RequirementReviewContent.model_validate(review_row.ai_original)
+    legacy_ids = {item.id for item in original_review.existing_acceptance_criteria}
+
+    prepared_suite = _prepare_generated_test_suite(
+        healed_suite,
+        review,
+        api_review,
+        specification,
+        legacy_ids,
+    )
+
+    customized_ids = {
+        tc.id for tc in current_suite.test_cases if getattr(tc, "is_customized", False)
+    }
+    updated_cases = []
+    for tc in prepared_suite.test_cases:
+        if tc.id in customized_ids:
+            updated_cases.append(tc.model_copy(update={"is_customized": True}))
+        else:
+            updated_cases.append(tc)
+    prepared_suite = prepared_suite.model_copy(update={"test_cases": updated_cases})
+
+    test_set.content = prepared_suite.model_dump(mode="json")
+    test_set.content_version += 1
     db.commit()
     db.refresh(test_set)
     return test_set
@@ -1486,6 +1630,124 @@ def decide_coverage_target(
     test_set.coverage_decisions = [
         item for item in (test_set.coverage_decisions or []) if _decision_key(item) != key
     ] + [decision]
+    test_set.coverage_accepted_at = None
+    test_set.coverage_accepted_by = None
+    db.commit()
+    db.refresh(test_set)
+    return test_set
+
+
+def decide_batch_coverage_targets(
+    db: Session, test_set_id: str, payload: BatchCoverageDecisionInput
+) -> TestCaseSet:
+    test_set = get_test_set(db, test_set_id)
+    if not payload.decisions:
+        return test_set
+
+    review = _current_assessment_source(db, test_set)
+    content = TestCaseSetContent.model_validate(test_set.content)
+    _validate_test_suite_context(db, test_set, content)
+
+    current_decisions_map = {
+        _decision_key(item): item for item in (test_set.coverage_decisions or [])
+    }
+
+    for decision_input in payload.decisions:
+        if not decision_input.decided_by.strip():
+            raise AppError("decision_actor_required", "A QA decision needs a name", 422)
+
+        key = (decision_input.target_type.value, decision_input.target_id)
+        row = next(
+            (
+                item
+                for item in content.coverage_matrix
+                if (item.target_type.value, item.target_id) == key
+            ),
+            None,
+        )
+        if row is None or decision_input.target_type == CoverageTargetType.category:
+            continue
+
+        reason = (decision_input.reason or "").strip()
+        owner = (decision_input.owner or "").strip()
+        assertion = (decision_input.assertion or "").strip()
+
+        if decision_input.disposition == "confirmed":
+            evidence = next(
+                (
+                    item
+                    for item in row.assertion_evidence
+                    if item.test_case_id == decision_input.assertion_case_id
+                    and item.assertion == assertion
+                ),
+                None,
+            )
+            case = next(
+                (item for item in content.test_cases if item.id == decision_input.assertion_case_id),
+                None,
+            )
+            if (
+                row.status != CoverageStatus.covered
+                or row.unverified_aspects
+                or not evidence
+                or not case
+                or case.needs_clarification
+            ):
+                continue
+        else:
+            if not reason:
+                reason = "Quyết định xử lý gap hàng loạt của QA"
+            if decision_input.disposition == "deferred" and not owner:
+                owner = decision_input.decided_by.strip()
+            if decision_input.disposition in {"accepted_risk", "not_applicable"}:
+                severity = None
+                if decision_input.target_type == CoverageTargetType.risk:
+                    risk = next(
+                        (
+                            item
+                            for item in review.content.get("risks", [])
+                            if item["id"] == decision_input.target_id
+                        ),
+                        None,
+                    )
+                    severity = risk.get("severity") if risk else None
+                elif (
+                    decision_input.target_type == CoverageTargetType.api_check
+                    and test_set.api_contract_review_id
+                ):
+                    api_review = get_api_contract_review(db, test_set.api_contract_review_id)
+                    finding = next(
+                        (
+                            item
+                            for item in api_review.content.get("findings", [])
+                            if item["id"] == decision_input.target_id
+                        ),
+                        None,
+                    )
+                    severity = finding.get("severity") if finding else None
+                if severity in {"high", "critical"}:
+                    continue
+
+        current_decisions_map[key] = {
+            "target_type": key[0],
+            "target_id": key[1],
+            "disposition": decision_input.disposition,
+            "decided_by": decision_input.decided_by.strip(),
+            "decided_at": datetime.now(UTC).isoformat(),
+            "assertion_case_id": decision_input.assertion_case_id
+            if decision_input.disposition == "confirmed"
+            else None,
+            "assertion": assertion if decision_input.disposition == "confirmed" else None,
+            "reason": reason or None,
+            "owner": owner or None,
+            "story_version": test_set.story_version,
+            "review_id": test_set.review_id,
+            "api_contract_review_id": test_set.api_contract_review_id,
+            "api_specification_id": (test_set.generation_info or {}).get("api_specification_id"),
+            "content_version": test_set.content_version,
+        }
+
+    test_set.coverage_decisions = list(current_decisions_map.values())
     test_set.coverage_accepted_at = None
     test_set.coverage_accepted_by = None
     db.commit()
