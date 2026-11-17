@@ -358,6 +358,71 @@ export function StoryForm({ initial, onSave, onCancel, busy }: { initial?: Story
   </div>
 }
 
+type AcceptFinding = (item: ReviewItem, text: string, outcome: string, actor: string) => Promise<void>
+
+function FindingAcceptance({ item, onAccept, busy }: { item: ReviewItem; onAccept: AcceptFinding; busy: boolean }) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState(item.proposed_ac ?? '')
+  const [outcome, setOutcome] = useState('')
+  const [actor, setActor] = useState('')
+  const [error, setError] = useState('')
+  if (!open) return <Button type="button" variant="ghost" disabled={busy} onClick={() => setOpen(true)}><Plus size={13} /> Xem trước & thêm AC</Button>
+  return <form className="ac-confirmation" onSubmit={async e => {
+    e.preventDefault(); setError('')
+    try { await onAccept(item, text.trim(), outcome.trim(), actor.trim()); setOpen(false) }
+    catch (error) { setError(String(error)) }
+  }}>
+    <p>Chỉ nhập hành vi sản phẩm đã được xác nhận. Giữ nhận xét và câu hỏi ở finding.</p>
+    <label>Hành vi / điều kiện đã xác nhận<textarea required maxLength={1000} value={text} onChange={e => setText(e.target.value)} /></label>
+    <label>Kết quả mong đợi<input required maxLength={1000} value={outcome} onChange={e => setOutcome(e.target.value)} /></label>
+    <label>Người xác nhận (PO/BA/QA)<input required maxLength={120} value={actor} onChange={e => setActor(e.target.value)} /></label>
+    <blockquote>Xem trước: {text}{outcome && !text.includes(outcome) ? ` — ${outcome}` : ''}</blockquote>
+    <p>Thêm AC sẽ tăng phiên bản story và làm cũ các review/test suite hiện tại.</p>
+    {error && <p role="alert">{error}</p>}
+    <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Hủy</Button>
+    <button className="button" type="submit" disabled={busy || !text.trim() || !outcome.trim() || !actor.trim()}>Xác nhận & thêm AC</button>
+  </form>
+}
+
+function ReviewDiff({ current, previous }: { current: ReviewContent; previous: ReviewContent }) {
+  const before = new Map(previous.existing_acceptance_criteria.map(x => [x.source_id || x.id, x]))
+  const after = new Set(current.existing_acceptance_criteria.map(x => x.source_id || x.id))
+  return <ul>{current.existing_acceptance_criteria.map(x => <li key={x.id}>{!before.has(x.source_id || x.id) ? 'Thêm' : JSON.stringify(before.get(x.source_id || x.id)) === JSON.stringify(x) ? 'Giữ nguyên' : 'Thay đổi'}: {x.criterion}</li>)}{previous.existing_acceptance_criteria.filter(x => !after.has(x.source_id || x.id)).map(x => <li key={x.id}>Bỏ: {x.criterion}</li>)}{sectionLabels.map(([key, label]) => { const old = new Map((previous[key] as ReviewItem[]).map(x => [x.id, x])); const now = new Set((current[key] as ReviewItem[]).map(x => x.id)); return <li key={key}>{label}<ul>{(current[key] as ReviewItem[]).map(x => <li key={x.id}>{!old.has(x.id) ? 'Thêm' : JSON.stringify(old.get(x.id)) === JSON.stringify(x) ? 'Giữ nguyên' : 'Thay đổi'}: {x.title}</li>)}{(previous[key] as ReviewItem[]).filter(x => !now.has(x.id)).map(x => <li key={x.id}>Bỏ: {x.title}</li>)}</ul></li> })}</ul>
+}
+
+function RequirementEditor({ value, onSave, onCancel, busy }: { value: ReviewContent; onSave: (value: ReviewContent) => Promise<void>; onCancel: () => void; busy: boolean }) {
+  const [draft, setDraft] = useState(() => structuredClone(value))
+  const [error, setError] = useState('')
+  const update = () => setDraft(structuredClone(draft))
+  return <form className="requirement-editor" onSubmit={async e => { e.preventDefault(); setError(''); try { await onSave(draft) } catch (e) { setError(String(e)) } }}>
+    <label>Tóm tắt<textarea value={draft.business_summary} onChange={e => { draft.business_summary = e.target.value; update() }} /></label>
+    {draft.existing_acceptance_criteria.map(item => <fieldset key={item.id}><legend>{item.id}</legend>
+      <label>Yêu cầu<textarea value={item.criterion} onChange={e => { item.criterion = e.target.value; item.confirmed_by = ''; update() }} /></label>
+      <label>Tham chiếu nguồn<input value={item.source_reference} onChange={e => { item.source_reference = e.target.value; item.confirmed_by = ''; update() }} /></label>
+      <label>Trích nguồn nguyên văn<input value={item.source_quote ?? ''} onChange={e => { item.source_quote = e.target.value || null; item.confirmed_by = ''; update() }} /></label>
+      {item.obligations.map(o => <div key={o.id}><label>Nghĩa vụ kiểm thử<input value={o.text} onChange={e => { o.text = e.target.value; item.confirmed_by = ''; update() }} /></label><label>Đoạn nguồn hỗ trợ<input value={o.source_quote ?? ''} onChange={e => { o.source_quote = e.target.value || null; item.confirmed_by = ''; update() }} /></label><Button type="button" variant="ghost" onClick={() => { item.obligations = item.obligations.filter(x => x.id !== o.id); item.confirmed_by = ''; update() }}>Xóa nghĩa vụ</Button></div>)}
+      <Button type="button" variant="ghost" onClick={() => { item.obligations.push({ id: `TMP-${Date.now()}`, text: '' }); item.confirmed_by = ''; update() }}>Thêm nghĩa vụ</Button>
+      <label>QA xác nhận diễn giải & tách nghĩa vụ<input value={item.confirmed_by ?? ''} onChange={e => { item.confirmed_by = e.target.value; update() }} /></label>
+    </fieldset>)}
+    <Button type="button" variant="ghost" onClick={() => { draft.existing_acceptance_criteria.push({id: `TMP-${Date.now()}`, criterion: '', source_reference: '', obligations: []}); update() }}>Bổ sung yêu cầu còn thiếu</Button>
+    {sectionLabels.map(([key, label]) => <section key={key}><h3>{label}</h3>{(draft[key] as ReviewItem[]).map(item => <fieldset key={item.id}><legend>{item.id}</legend>
+      <label>Tiêu đề<input value={item.title} onChange={e => { item.title = e.target.value; update() }} /></label>
+      <label>Nguồn<input value={item.source_reference} onChange={e => { item.source_reference = e.target.value; update() }} /></label>
+      <label>Mức độ<select value={item.severity} onChange={e => { item.severity = e.target.value as ReviewItem['severity']; update() }}>{['critical', 'high', 'medium', 'low'].map(x => <option key={x}>{x}</option>)}</select></label>
+      <label>Nhận xét<textarea value={item.detail} onChange={e => { item.detail = e.target.value; update() }} /></label>
+      <label>AC đề xuất<textarea value={item.proposed_ac ?? ''} onChange={e => { item.proposed_ac = e.target.value; update() }} /></label>
+      <label>Phân loại<select value={item.classification} onChange={e => { item.classification = e.target.value as ReviewItem['classification']; update() }}>{['requirement', 'recommendation', 'needs_clarification'].map(x => <option key={x}>{x}</option>)}</select></label>
+      <label>Trạng thái<select value={item.resolution_status ?? 'open'} onChange={e => { item.resolution_status = e.target.value as ReviewItem['resolution_status']; update() }}>{['open', 'resolved', 'rejected'].map(x => <option key={x}>{x}</option>)}</select></label>
+      <label>Trả lời / lý do<textarea value={item.answer ?? ''} onChange={e => { item.answer = e.target.value; update() }} /></label>
+      <label>Người phụ trách<input value={item.owner ?? ''} onChange={e => { item.owner = e.target.value; update() }} /></label>
+      <label>Người xác nhận trả lời<input value={item.resolved_by ?? ''} onChange={e => { item.resolved_by = e.target.value; update() }} /></label>
+      <label><input type="checkbox" checked={item.blocks_testability ?? false} onChange={e => { item.blocks_testability = e.target.checked; update() }} />Cản trở kiểm thử</label>
+      <label>Requirement liên quan (ID, cách nhau dấu phẩy)<input value={(item.related_requirement_ids ?? []).join(', ')} onChange={e => { item.related_requirement_ids = e.target.value.split(',').map(x => x.trim()).filter(Boolean); update() }} /></label>
+    </fieldset>)}</section>)}
+    {error && <p role="alert">{error}</p>}<Button type="button" variant="ghost" onClick={onCancel}>Hủy</Button><button className="button" type="submit" disabled={busy}>Lưu review</button>
+  </form>
+}
+
 function FindingList({
   title,
   items,
@@ -366,20 +431,22 @@ function FindingList({
 }: {
   title: string
   items: ReviewItem[]
-  onAcceptFinding?: (item: ReviewItem) => Promise<void>
+  onAcceptFinding?: AcceptFinding
   busy?: boolean
 }) {
+  const [severity, setSeverity] = useState('all')
   return (
     <section className="finding-section">
       <div className="section-title">
         <h3>{title}</h3>
         <span>{items.length}</span>
+        <select aria-label={`Lọc mức độ ${title}`} value={severity} onChange={e => setSeverity(e.target.value)}><option value="all">Tất cả mức độ</option>{['critical', 'high', 'medium', 'low'].map(value => <option key={value}>{value}</option>)}</select>
       </div>
       {items.length === 0 ? (
         <p className="empty">Không có phát hiện.</p>
       ) : (
         <div className="finding-grid">
-          {items.map(item => (
+          {items.filter(item => severity === 'all' || item.severity === severity).map(item => (
             <article className="finding" key={item.id}>
               <div>
                 <span className={`severity severity-${item.severity}`}>{item.severity}</span>
@@ -392,18 +459,11 @@ function FindingList({
               <p>{item.detail}</p>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '10px' }}>
                 <small>Nguồn: {item.source_reference}</small>
-                {onAcceptFinding && item.classification !== 'requirement' && (
-                  <button
-                    type="button"
-                    className="button button-ghost"
-                    style={{ fontSize: '11px', padding: '4px 9px', display: 'inline-flex', alignItems: 'center', gap: '4px', height: 'auto', whiteSpace: 'nowrap' }}
-                    disabled={busy}
-                    onClick={() => void onAcceptFinding(item)}
-                    title="Thêm đề xuất này vào danh sách Acceptance Criteria của Story"
-                  >
-                    <Plus size={13} /> Thêm vào Story AC
-                  </button>
-                )}
+                {item.blocks_testability && <strong>Cản trở kiểm thử</strong>}
+                <small>Trạng thái: {item.resolution_status ?? 'open'} · Phụ trách: {item.owner || 'Chưa giao'}</small>
+                {item.answer && <p>Trả lời: {item.answer} · {item.resolved_by}</p>}
+                {item.accepted_ac ? <p>Đã thêm: {item.accepted_ac} · {item.accepted_by}</p> : onAcceptFinding && item.classification !== 'requirement' && <FindingAcceptance item={item} onAccept={onAcceptFinding} busy={Boolean(busy)} />}
+
               </div>
             </article>
           ))}
@@ -418,17 +478,22 @@ function JsonEditor<T>({ value, onSave, onCancel, busy }: { value: T; onSave: (v
   return <div className="json-editor"><p>Chỉnh sửa dữ liệu có cấu trúc. API sẽ kiểm tra schema trước khi lưu.</p><textarea value={text} rows={26} spellCheck={false} onChange={e => setText(e.target.value)} />{error && <small className="field-error">{error}</small>}<div className="actions"><Button variant="ghost" onClick={onCancel}>Huỷ</Button><Button busy={busy} onClick={async () => { try { await onSave(JSON.parse(text) as T) } catch (e) { setError(e instanceof SyntaxError ? 'JSON không hợp lệ.' : String(e)) } }}><Save size={17} /> Lưu thay đổi</Button></div></div>
 }
 
-export function ReviewPanel({ review, sourceCriteria, onApprove, onSave, onGenerateTests, onRegenerate, onAcceptFinding, apiReviewId, requiresApiReview, busy }: { review: Review; sourceCriteria: string[]; onApprove: () => Promise<void>; onSave: (c: ReviewContent) => Promise<void>; onGenerateTests: () => Promise<void>; onRegenerate: () => Promise<void>; onAcceptFinding?: (item: ReviewItem) => Promise<void>; apiReviewId?: string; requiresApiReview: boolean; busy: string }) {
+export function ReviewPanel({ review, sourceCriteria, previousContent, onApprove, onSave, onGenerateTests, onRegenerate, onAcceptFinding, apiReviewId, requiresApiReview, busy }: { review: Review; sourceCriteria: string[]; previousContent?: ReviewContent; onApprove: () => Promise<void>; onSave: (c: ReviewContent) => Promise<void>; onGenerateTests: () => Promise<void>; onRegenerate: () => Promise<void>; onAcceptFinding?: AcceptFinding; apiReviewId?: string; requiresApiReview: boolean; busy: string }) {
   const [editing, setEditing] = useState(false)
   return <div className="card"><div className="card-heading"><div><span className="eyebrow">Requirement review · v{review.story_version}</span><h2>Phân tích yêu cầu</h2></div><StatusBadge status={review.status} stale={review.stale} /></div>
-    {editing ? <JsonEditor value={review.content} busy={busy === 'save-review'} onCancel={() => setEditing(false)} onSave={async c => { await onSave(c); setEditing(false) }} /> : <>
+    {editing ? <RequirementEditor value={review.content} busy={Boolean(busy)} onCancel={() => setEditing(false)} onSave={async c => { await onSave(c); setEditing(false) }} /> : <>
+      {previousContent && <details><summary>So sánh với lần review trước</summary><ReviewDiff current={review.content} previous={previousContent} /></details>}
       <div className="summary"><Sparkles size={20} /><div><strong>Tóm tắt nghiệp vụ</strong><p>{review.content.business_summary}</p></div></div>
       <p className="human-review-note">AC hiện có là requirement từ story. Các AC còn thiếu chỉ là recommendation của AI; mục <b>needs_clarification</b> cần PO/BA xác nhận trước khi coi là quy tắc nghiệp vụ.</p>
       {new Set(review.content.existing_acceptance_criteria.filter(item => item.source_id?.startsWith('SRC-AC-')).map(item => item.source_id)).size < sourceCriteria.length && <p className="notice">AI chưa trích đủ acceptance criteria gốc. QA cần bổ sung các mục còn thiếu trước khi phê duyệt.</p>}
       {apiReviewId && <p className="coverage">Bộ test tiếp theo sẽ kết hợp API Contract Review đã duyệt.</p>}
       {requiresApiReview && !apiReviewId && <p className="notice">Duyệt API Contract Review hiện tại trước khi sinh test cho story này.</p>}
-      <section className="finding-section"><div className="section-title"><h3>Acceptance criteria hiện có</h3><span>{review.content.existing_acceptance_criteria.length}</span></div><div className="criteria-list">{review.content.existing_acceptance_criteria.map(x => <div key={x.id}><code>{x.id}</code><span>{x.criterion}</span><small>{(x.obligations ?? []).map(item => item.text).join(' · ')}</small></div>)}</div></section>
-      {sectionLabels.map(([key, label]) => <FindingList key={key} title={label} items={review.content[key] as ReviewItem[]} onAcceptFinding={onAcceptFinding} busy={Boolean(busy)} />)}
+      <section className="finding-section"><div className="section-title"><h3>Acceptance criteria hiện có</h3><span>{review.content.existing_acceptance_criteria.length}</span></div><div className="criteria-list">{review.content.existing_acceptance_criteria.map(x => {
+        const pointer = /acceptance_criteria\[(\d+)\]/.exec(x.source_reference)
+        const source = pointer ? sourceCriteria[Number(pointer[1])] : x.source_quote || x.source_reference
+        return <div key={x.id}><code>{x.id}</code><span>{x.criterion}</span><blockquote>Nguồn nguyên văn: {source}</blockquote>{source?.trim().toLocaleLowerCase() !== x.criterion.trim().toLocaleLowerCase() && <strong>Diễn giải khác nguồn · {x.confirmed_by ? `Đã xác nhận: ${x.confirmed_by}` : 'Cần QA xác nhận'}</strong>}<small>{(x.obligations ?? []).map(item => item.text).join(' · ')}</small></div>
+      })}</div></section>
+      {sectionLabels.map(([key, label]) => <FindingList key={key} title={label} items={review.content[key] as ReviewItem[]} onAcceptFinding={review.stale ? undefined : onAcceptFinding} busy={Boolean(busy)} />)}
       <div className="actions split"><div><a className="button button-ghost" href={api.exportUrl('requirement-reviews', review.id, 'json')}><Download size={16} /> JSON</a><a className="button button-ghost" href={api.exportUrl('requirement-reviews', review.id, 'csv')}><Download size={16} /> CSV</a></div><div>{review.stale ? <Button busy={busy === 'generate-review'} onClick={onRegenerate}><RefreshCw size={16} /> Phân tích version hiện tại</Button> : <><Button variant="ghost" onClick={() => setEditing(true)}><Pencil size={16} /> Chỉnh sửa</Button>{review.status !== 'approved' && <Button busy={busy === 'approve-review'} onClick={onApprove}><Check size={17} /> Phê duyệt</Button>}{review.status === 'approved' && <Button busy={busy === 'generate-tests'} disabled={requiresApiReview && !apiReviewId} onClick={onGenerateTests}><FlaskConical size={17} /> Sinh test case</Button>}</>}</div></div>
     </>}
   </div>

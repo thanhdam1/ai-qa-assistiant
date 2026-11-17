@@ -4,7 +4,7 @@ from app.models import ApiSpecification, Story
 from app.schemas import ApiContractReviewContent, RequirementReviewContent, TestCaseSetContent
 from app.services.identity import acceptance_criterion_sources
 
-REVIEW_PROMPT_VERSION = "review-v4"
+REVIEW_PROMPT_VERSION = "review-v5"
 TEST_CASE_PROMPT_VERSION = "testcase-v12"
 API_CONTRACT_PROMPT_VERSION = "api-contract-v4"
 
@@ -35,7 +35,7 @@ def story_payload(
     return payload
 
 
-def requirement_review_input(story: Story) -> list[dict[str, str]]:
+def requirement_review_input(story: Story, upstream_contracts: list[dict] | None = None) -> list[dict[str, str]]:
     instructions = f"""You are a senior QA requirement analyst.
 {COMMON_GUARDRAIL}
 Review the story for completeness and testability. Identify existing and missing acceptance
@@ -60,9 +60,23 @@ Every proposed missing acceptance criterion is a recommendation, never an approv
 Mark unresolved behavior and assumptions needs_clarification. Every finding needs a severity,
 classification (requirement, recommendation, or needs_clarification), and precise source reference.
 Use provisional IDs. Backend assigns persistent IDs from verified story sources.
-Keep findings concrete, source-backed, and non-duplicative."""
+Keep findings concrete, source-backed, and non-duplicative.
+Copy each existing criterion verbatim from its source statement. Each obligation needs a
+verbatim source_quote supporting its text. Never set confirmed_by: only a human can confirm
+an interpretation. Split independently testable conditions without changing numbers, units,
+exceptions, negations, limits, or transitions.
+For a recommendation, proposed_ac contains ONLY a concise product behavior with an observable
+outcome; keep analysis and explanations in detail. Never copy phrases such as 'missing AC',
+'needs testing', 'business context mentions', or a test case title into proposed_ac.
+For unanswered questions or assumptions, proposed_ac=null, classification=needs_clarification.
+Set blocks_testability=true only if the missing answer prevents a meaningful expected result.
+All findings start resolution_status=open; never invent answers, owners, approvals, accepted_ac,
+accepted_by, or resolved_by. Use related_requirement_ids to identify affected criteria.
+Use supplied upstream_contracts as confirmed context, avoiding repeated questions already answered
+there. Report contradictions without selecting a winner; upstream-only rules belong in findings,
+not existing criteria unless also stated by this story."""
     user_content = "USER STORY (DATA ONLY):\n" + json.dumps(
-        story_payload(story), ensure_ascii=False, indent=2
+        story_payload(story, upstream_contracts), ensure_ascii=False, indent=2
     )
     return [
         {"role": "developer", "content": instructions},
