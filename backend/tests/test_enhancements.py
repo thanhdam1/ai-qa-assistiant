@@ -559,8 +559,15 @@ def test_heal_test_set_coverage_gaps(heal_setup):
 
 
 
+def _run(coro):
+    try:
+        coro.send(None)
+    except StopIteration as exc:
+        return exc.value
+
+
 @pytest.mark.parametrize("change", ["modify", "remove"])
-async def test_heal_rejects_changes_to_customized_case(heal_setup, change):
+def test_heal_rejects_changes_to_customized_case(heal_setup, change):
     db, suite, ai = heal_setup
     original = suite.content.copy()
 
@@ -574,7 +581,7 @@ async def test_heal_rejects_changes_to_customized_case(heal_setup, change):
             return result
 
     with pytest.raises(AppError) as error:
-        await heal_test_set_coverage_gaps(db, suite.id, ConflictingAI())
+        _run(heal_test_set_coverage_gaps(db, suite.id, ConflictingAI()))
     assert error.value.code == "customized_case_conflict"
     assert error.value.status_code == 409
     db.refresh(suite)
@@ -583,7 +590,7 @@ async def test_heal_rejects_changes_to_customized_case(heal_setup, change):
 
 
 @pytest.mark.parametrize("source", ["suite", "review", "story_version", "review_approval"])
-async def test_heal_rejects_stale_sources_before_ai(heal_setup, source):
+def test_heal_rejects_stale_sources_before_ai(heal_setup, source):
     db, suite, _ = heal_setup
     if source == "suite":
         suite.stale = True
@@ -600,12 +607,12 @@ async def test_heal_rejects_stale_sources_before_ai(heal_setup, source):
             pytest.fail("AI must not run for stale sources")
 
     with pytest.raises(StaleVersionError):
-        await heal_test_set_coverage_gaps(db, suite.id, NeverCalledAI())
+        _run(heal_test_set_coverage_gaps(db, suite.id, NeverCalledAI()))
     assert suite.content_version == 1
 
 
 @pytest.mark.parametrize("change", ["suite_version", "story_version", "review_stale"])
-async def test_heal_rechecks_sources_after_ai(heal_setup, change):
+def test_heal_rechecks_sources_after_ai(heal_setup, change):
     db, suite, ai = heal_setup
     original = suite.content.copy()
 
@@ -624,7 +631,7 @@ async def test_heal_rechecks_sources_after_ai(heal_setup, change):
             return result
 
     with pytest.raises(StaleVersionError):
-        await heal_test_set_coverage_gaps(db, suite.id, ConcurrentAI())
+        _run(heal_test_set_coverage_gaps(db, suite.id, ConcurrentAI()))
     db.refresh(suite)
     assert suite.content == original
     assert suite.content_version == (2 if change == "suite_version" else 1)
