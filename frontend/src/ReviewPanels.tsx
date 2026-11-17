@@ -488,11 +488,74 @@ export function ReviewPanel({ review, sourceCriteria, previousContent, onApprove
       {new Set(review.content.existing_acceptance_criteria.filter(item => item.source_id?.startsWith('SRC-AC-')).map(item => item.source_id)).size < sourceCriteria.length && <p className="notice">AI chưa trích đủ acceptance criteria gốc. QA cần bổ sung các mục còn thiếu trước khi phê duyệt.</p>}
       {apiReviewId && <p className="coverage">Bộ test tiếp theo sẽ kết hợp API Contract Review đã duyệt.</p>}
       {requiresApiReview && !apiReviewId && <p className="notice">Duyệt API Contract Review hiện tại trước khi sinh test cho story này.</p>}
-      <section className="finding-section"><div className="section-title"><h3>Acceptance criteria hiện có</h3><span>{review.content.existing_acceptance_criteria.length}</span></div><div className="criteria-list">{review.content.existing_acceptance_criteria.map(x => {
-        const pointer = /acceptance_criteria\[(\d+)\]/.exec(x.source_reference)
-        const source = pointer ? sourceCriteria[Number(pointer[1])] : x.source_quote || x.source_reference
-        return <div key={x.id}><code>{x.id}</code><span>{x.criterion}</span><blockquote>Nguồn nguyên văn: {source}</blockquote>{source?.trim().toLocaleLowerCase() !== x.criterion.trim().toLocaleLowerCase() && <strong>Diễn giải khác nguồn · {x.confirmed_by ? `Đã xác nhận: ${x.confirmed_by}` : 'Cần QA xác nhận'}</strong>}<small>{(x.obligations ?? []).map(item => item.text).join(' · ')}</small></div>
-      })}</div></section>
+      <section className="finding-section">
+        <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h3>Acceptance criteria hiện có</h3>
+          <span>{review.content.existing_acceptance_criteria.length}</span>
+          {!review.stale && review.content.existing_acceptance_criteria.some(c => !c.confirmed_by) && (
+            <button
+              type="button"
+              className="button button-ghost"
+              style={{ fontSize: '12px', marginLeft: 'auto', padding: '4px 10px', height: 'auto' }}
+              disabled={Boolean(busy)}
+              onClick={async () => {
+                const name = prompt('Nhập tên QA xác nhận tất cả diễn giải tiêu chí:', 'QA')
+                if (!name || !name.trim()) return
+                const updated = structuredClone(review.content)
+                for (const item of updated.existing_acceptance_criteria) {
+                  if (!item.confirmed_by) item.confirmed_by = name.trim()
+                }
+                await onSave(updated)
+              }}
+              title="Xác nhận diễn giải và phân tách nghĩa vụ cho toàn bộ các tiêu chí hiện có"
+            >
+              ⚡ Xác nhận tất cả diễn giải
+            </button>
+          )}
+        </div>
+        <div className="criteria-list">
+          {review.content.existing_acceptance_criteria.map(x => {
+            const pointer = /acceptance_criteria\[(\d+)\]/.exec(x.source_reference)
+            const source = pointer ? sourceCriteria[Number(pointer[1])] : x.source_quote || x.source_reference
+            const differs = source?.trim().toLocaleLowerCase() !== x.criterion.trim().toLocaleLowerCase()
+            return (
+              <div key={x.id}>
+                <code>{x.id}</code>
+                <span>{x.criterion}</span>
+                <blockquote>Nguồn nguyên văn: {source}</blockquote>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                  {differs && (
+                    <strong>
+                      Diễn giải khác nguồn · {x.confirmed_by ? `Đã xác nhận: ${x.confirmed_by}` : 'Cần QA xác nhận'}
+                    </strong>
+                  )}
+                  {!review.stale && !x.confirmed_by && (
+                    <button
+                      type="button"
+                      className="button button-ghost"
+                      style={{ fontSize: '11px', padding: '2px 8px', height: 'auto' }}
+                      disabled={Boolean(busy)}
+                      onClick={async () => {
+                        const name = prompt(`Nhập tên QA xác nhận diễn giải cho ${x.id}:`, 'QA')
+                        if (!name || !name.trim()) return
+                        const updated = structuredClone(review.content)
+                        const item = updated.existing_acceptance_criteria.find(c => c.id === x.id)
+                        if (item) {
+                          item.confirmed_by = name.trim()
+                          await onSave(updated)
+                        }
+                      }}
+                    >
+                      <Check size={12} /> Xác nhận diễn giải
+                    </button>
+                  )}
+                </div>
+                <small>{(x.obligations ?? []).map(item => item.text).join(' · ')}</small>
+              </div>
+            )
+          })}
+        </div>
+      </section>
       {sectionLabels.map(([key, label]) => <FindingList key={key} title={label} items={review.content[key] as ReviewItem[]} onAcceptFinding={review.stale ? undefined : onAcceptFinding} busy={Boolean(busy)} />)}
       <div className="actions split"><div><a className="button button-ghost" href={api.exportUrl('requirement-reviews', review.id, 'json')}><Download size={16} /> JSON</a><a className="button button-ghost" href={api.exportUrl('requirement-reviews', review.id, 'csv')}><Download size={16} /> CSV</a></div><div>{review.stale ? <Button busy={busy === 'generate-review'} onClick={onRegenerate}><RefreshCw size={16} /> Phân tích version hiện tại</Button> : <><Button variant="ghost" onClick={() => setEditing(true)}><Pencil size={16} /> Chỉnh sửa</Button>{review.status !== 'approved' && <Button busy={busy === 'approve-review'} onClick={onApprove}><Check size={17} /> Phê duyệt</Button>}{review.status === 'approved' && <Button busy={busy === 'generate-tests'} disabled={requiresApiReview && !apiReviewId} onClick={onGenerateTests}><FlaskConical size={17} /> Sinh test case</Button>}</>}</div></div>
     </>}
