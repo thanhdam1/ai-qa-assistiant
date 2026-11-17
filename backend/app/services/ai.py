@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from typing import Protocol, TypeVar
@@ -278,12 +279,28 @@ class GeminiProvider:
                 },
             }
             for attempt in range(2):
-                completion = await self.client.chat.completions.create(
-                    model=self.config.gemini_model,
-                    messages=messages,
-                    response_format=response_format,
-                )
-                if not completion.choices:
+                completion = None
+                for net_retry in range(3):
+                    try:
+                        completion = await self.client.chat.completions.create(
+                            model=self.config.gemini_model,
+                            messages=messages,
+                            response_format=response_format,
+                        )
+                        break
+                    except APIError as exc:
+                        if getattr(exc, "status_code", None) in (500, 502, 503, 504) and net_retry < 2:
+                            wait_s = 2 * (net_retry + 1)
+                            logger.warning(
+                                "Gemini temporary %s error, retrying in %ss (attempt %s/3)...",
+                                getattr(exc, "status_code", None),
+                                wait_s,
+                                net_retry + 1,
+                            )
+                            await asyncio.sleep(wait_s)
+                            continue
+                        raise
+                if not completion or not completion.choices:
                     raise AIProviderError("Gemini refused or returned an incomplete response")
                 message = completion.choices[0].message
                 if message.refusal or not message.content:
@@ -383,6 +400,7 @@ class GeminiProvider:
                 provider_code,
                 provider_message,
             )
+            is_retryable = status_code in (500, 502, 503, 504)
             if status_code == 400:
                 message = (
                     "Gemini rejected the request or structured-output schema. "
@@ -393,9 +411,18 @@ class GeminiProvider:
                     f"Gemini model '{self.config.gemini_model}' was not found. "
                     "Check GEMINI_MODEL in the backend environment."
                 )
+            elif status_code == 503:
+                message = (
+                    f"Mô hình Gemini AI đang tạm thời quá tải do lượng truy cập cao (503 Service Unavailable / High Demand). "
+                    "Hệ thống đã tự động thử lại nhưng máy chủ Google vẫn bận. Vui lòng bấm thử lại sau vài giây."
+                )
             else:
                 message = f"Gemini API request failed: {provider_message}"
-            raise AIProviderError(message, provider_code=str(provider_code or status_code or "api_error")) from exc
+            raise AIProviderError(
+                message,
+                retryable=is_retryable,
+                provider_code=str(provider_code or status_code or "api_error"),
+            ) from exc
         except ValidationError as exc:
             error_locations = [
                 f"{'.'.join(map(str, error['loc'])) or '<model>'}: {error['msg']}"
