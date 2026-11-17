@@ -1,8 +1,11 @@
 import asyncio
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.errors import AppError, StaleVersionError
 from app.models import Base, RequirementReview, Story, TestCaseSet
 from app.schemas import (
     AcceptRecommendationInput,
@@ -296,7 +299,8 @@ def test_batch_coverage_decisions(mem_session):
     assert d2 is not None and d2["disposition"] == "accepted_risk"
 
 
-def test_heal_test_set_coverage_gaps(mem_session):
+@pytest.fixture
+def heal_setup(mem_session):
     story = Story(
         id="story-heal-1",
         title="Heal Gaps Story",
@@ -516,11 +520,31 @@ def test_heal_test_set_coverage_gaps(mem_session):
                 ],
             )
 
-    coro = heal_test_set_coverage_gaps(mem_session, test_set.id, MockAI())
+    return mem_session, test_set, MockAI()
+
+
+def test_heal_test_set_coverage_gaps(heal_setup):
+    mem_session, test_set, ai = heal_setup
+    original_case = test_set.content["test_cases"][0].copy()
+    test_set.status = "approved"
+    test_set.approved_at = datetime.now(UTC)
+    test_set.coverage_accepted_at = datetime.now(UTC)
+    test_set.coverage_accepted_by = "QA"
+    test_set.coverage_decisions = [{"target_id": "OBL-1"}]
+    test_set.case_readiness = [{"case_id": "TC-001"}]
+    mem_session.commit()
+    coro = heal_test_set_coverage_gaps(mem_session, test_set.id, ai)
     with pytest.raises(StopIteration) as finished:
         coro.send(None)
     healed_result = finished.value.value
 
+    assert healed_result.status == "draft"
+    assert healed_result.approved_at is None
+    assert healed_result.coverage_accepted_at is None
+    assert healed_result.coverage_accepted_by is None
+    assert healed_result.coverage_decisions == []
+    assert healed_result.case_readiness == []
+    assert healed_result.content["test_cases"][0] == original_case
     assert healed_result.content_version == 2
     cases = healed_result.content["test_cases"]
     assert len(cases) == 2
@@ -533,3 +557,93 @@ def test_heal_test_set_coverage_gaps(mem_session):
     assert obl2_row["status"] == "covered"
     assert len(obl2_row["assertion_evidence"]) > 0
 
+
+
+@pytest.mark.parametrize("change", ["modify", "remove"])
+async def test_heal_rejects_changes_to_customized_case(heal_setup, change):
+    db, suite, ai = heal_setup
+    original = suite.content.copy()
+
+    class ConflictingAI:
+        async def heal_coverage_gaps(self, *args, **kwargs):
+            result = await ai.heal_coverage_gaps(*args, **kwargs)
+            if change == "modify":
+                result.test_cases[0].title = "AI overwrites QA"
+            else:
+                result.test_cases = result.test_cases[1:]
+            return result
+
+    with pytest.raises(AppError) as error:
+        await heal_test_set_coverage_gaps(db, suite.id, ConflictingAI())
+    assert error.value.code == "customized_case_conflict"
+    assert error.value.status_code == 409
+    db.refresh(suite)
+    assert suite.content == original
+    assert suite.content_version == 1
+
+
+@pytest.mark.parametrize("source", ["suite", "review", "story_version", "review_approval"])
+async def test_heal_rejects_stale_sources_before_ai(heal_setup, source):
+    db, suite, _ = heal_setup
+    if source == "suite":
+        suite.stale = True
+    elif source == "review":
+        db.get(RequirementReview, suite.review_id).stale = True
+    elif source == "review_approval":
+        db.get(RequirementReview, suite.review_id).status = "draft"
+    else:
+        db.get(Story, suite.story_id).version += 1
+    db.commit()
+
+    class NeverCalledAI:
+        async def heal_coverage_gaps(self, *args, **kwargs):
+            pytest.fail("AI must not run for stale sources")
+
+    with pytest.raises(StaleVersionError):
+        await heal_test_set_coverage_gaps(db, suite.id, NeverCalledAI())
+    assert suite.content_version == 1
+
+
+@pytest.mark.parametrize("change", ["suite_version", "story_version", "review_stale"])
+async def test_heal_rechecks_sources_after_ai(heal_setup, change):
+    db, suite, ai = heal_setup
+    original = suite.content.copy()
+
+    class ConcurrentAI:
+        async def heal_coverage_gaps(self, *args, **kwargs):
+            result = await ai.heal_coverage_gaps(*args, **kwargs)
+            # A separate session simulates an edit committed during the provider call.
+            with sessionmaker(bind=db.get_bind())() as other:
+                if change == "suite_version":
+                    other.get(TestCaseSet, suite.id).content_version += 1
+                elif change == "story_version":
+                    other.get(Story, suite.story_id).version += 1
+                else:
+                    other.get(RequirementReview, suite.review_id).stale = True
+                other.commit()
+            return result
+
+    with pytest.raises(StaleVersionError):
+        await heal_test_set_coverage_gaps(db, suite.id, ConcurrentAI())
+    db.refresh(suite)
+    assert suite.content == original
+    assert suite.content_version == (2 if change == "suite_version" else 1)
+
+
+@pytest.mark.parametrize("category", ["stakeholder_questions", "assumptions"])
+def test_accept_question_and_assumption_as_story_ac(heal_setup, category):
+    db, suite, _ = heal_setup
+    review = db.get(RequirementReview, suite.review_id)
+    finding = ReviewItem(
+        id="NEW-1", title="Confirmed rule", detail="Confirmed by PO",
+        severity=Severity.low, source_reference="Story description",
+        classification=FindingClassification.recommendation,
+    )
+    review.content = {**review.content, category: [finding.model_dump(mode="json")]}
+    db.commit()
+    story = accept_story_recommendation(
+        db, suite.story_id, AcceptRecommendationInput(finding_id=finding.id)
+    )
+    assert story.version == 2
+    assert story.acceptance_criteria[-1] == "AC-03: [Confirmed rule] Confirmed by PO"
+    assert suite.stale

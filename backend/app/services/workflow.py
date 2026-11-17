@@ -565,6 +565,8 @@ def accept_story_recommendation(
                 "missing_acceptance_criteria",
                 "edge_cases",
                 "ambiguities_and_conflicts",
+                "stakeholder_questions",
+                "assumptions",
                 "risks",
             ]:
                 items = content.get(category, [])
@@ -1404,6 +1406,8 @@ async def heal_test_set_coverage_gaps(
     ai: AIProvider,
 ) -> TestCaseSet:
     test_set = get_test_set(db, test_set_id)
+    _current_assessment_source(db, test_set)
+    expected_content_version = test_set.content_version
     story = get_story(db, test_set.story_id)
     review_row = get_review(db, test_set.review_id)
     stored_review = RequirementReviewContent.model_validate(review_row.content)
@@ -1448,6 +1452,25 @@ async def heal_test_set_coverage_gaps(
         upstream_contracts=upstream_contracts,
     )
 
+    # The provider call can outlive edits to the suite or its sources.
+    db.expire_all()
+    test_set = get_test_set(db, test_set_id)
+    _current_assessment_source(db, test_set)
+    if test_set.content_version != expected_content_version:
+        raise StaleVersionError()
+
+    healed_cases = {case.id: case for case in healed_suite.test_cases}
+    for case in current_suite.test_cases:
+        if case.is_customized:
+            proposed = healed_cases.get(case.id)
+            if proposed is None or proposed.model_copy(update={"is_customized": True}) != case:
+                raise AppError(
+                    "customized_case_conflict",
+                    f"Auto-heal cannot change or remove QA-customized case {case.id}",
+                    409,
+                    {"case_id": case.id},
+                )
+
     original_review = RequirementReviewContent.model_validate(review_row.ai_original)
     legacy_ids = {item.id for item in original_review.existing_acceptance_criteria}
 
@@ -1472,6 +1495,12 @@ async def heal_test_set_coverage_gaps(
 
     test_set.content = prepared_suite.model_dump(mode="json")
     test_set.content_version += 1
+    test_set.coverage_decisions = []
+    test_set.case_readiness = []
+    test_set.coverage_accepted_at = None
+    test_set.coverage_accepted_by = None
+    test_set.status = "draft"
+    test_set.approved_at = None
     db.commit()
     db.refresh(test_set)
     return test_set

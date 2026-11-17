@@ -792,6 +792,7 @@ def test_case_heal_gaps_input(
                 + json.dumps(current_suite.model_dump(mode="json"), ensure_ascii=False, indent=2)
                 + "\n\nINSTRUCTIONS:\n"
                 "1. PRESERVE all valid test cases currently in the suite.\n"
+                "Cases with is_customized=true were edited by QA: preserve every field and their IDs exactly; never remove or enhance them. Add separate cases for any missing assertions instead.\n"
                 "2. For targets that can be verified within an existing test case (e.g. asserting an extra field, status code, or message), enhance that test case's steps or expected_result with the explicit assertion and append the target ID to requirement_traceability.\n"
                 "3. For targets that represent distinct boundary, negative, or security paths not yet covered, ADD 1 to 4 focused new test cases (TC-xxx) specifically verifying those obligations.\n"
                 "4. Update coverage_matrix so the supplied targets have status='covered' with matching assertion_evidence and empty unverified_aspects.\n"
