@@ -518,22 +518,26 @@ export function ReviewPanel({ review, sourceCriteria, previousContent, onApprove
             const pointer = /acceptance_criteria\[(\d+)\]/.exec(x.source_reference)
             const source = pointer ? sourceCriteria[Number(pointer[1])] : x.source_quote || x.source_reference
             const differs = source?.trim().toLocaleLowerCase() !== x.criterion.trim().toLocaleLowerCase()
+            const distinctObligations = (x.obligations ?? []).filter(
+              ob => ob.text.trim().toLocaleLowerCase() !== x.criterion.trim().toLocaleLowerCase()
+            )
             return (
-              <div key={x.id}>
-                <code>{x.id}</code>
-                <span>{x.criterion}</span>
-                <blockquote>Nguồn nguyên văn: {source}</blockquote>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-                  {differs && (
-                    <strong>
-                      Diễn giải khác nguồn · {x.confirmed_by ? `Đã xác nhận: ${x.confirmed_by}` : 'Cần QA xác nhận'}
-                    </strong>
-                  )}
+              <div key={x.id} className="criterion-card">
+                <div className="criterion-header">
+                  <div className="criterion-meta">
+                    <code>{x.id}</code>
+                    {differs ? (
+                      <span className={`badge ${x.confirmed_by ? 'badge-approved' : 'badge-stale'}`}>
+                        {x.confirmed_by ? `✓ Đã xác nhận: ${x.confirmed_by}` : 'Cần QA xác nhận'}
+                      </span>
+                    ) : (
+                      <span className="badge badge-match">✓ Khớp nguồn</span>
+                    )}
+                  </div>
                   {!review.stale && !x.confirmed_by && (
                     <button
                       type="button"
-                      className="button button-ghost"
-                      style={{ fontSize: '11px', padding: '2px 8px', height: 'auto' }}
+                      className="button button-ghost btn-confirm-sm"
                       disabled={Boolean(busy)}
                       onClick={async () => {
                         const name = prompt(`Nhập tên QA xác nhận diễn giải cho ${x.id}:`, 'QA')
@@ -545,12 +549,32 @@ export function ReviewPanel({ review, sourceCriteria, previousContent, onApprove
                           await onSave(updated)
                         }
                       }}
+                      title={`Xác nhận diễn giải cho ${x.id}`}
                     >
                       <Check size={12} /> Xác nhận diễn giải
                     </button>
                   )}
                 </div>
-                <small>{(x.obligations ?? []).map(item => item.text).join(' · ')}</small>
+
+                <div className="criterion-body">
+                  <p className="criterion-text">{x.criterion}</p>
+
+                  {source && (
+                    <details className="criterion-source-details" open={differs && !x.confirmed_by ? false : undefined}>
+                      <summary>Nguồn nguyên văn đối chiếu</summary>
+                      <blockquote>Nguồn nguyên văn: {source}</blockquote>
+                    </details>
+                  )}
+
+                  {distinctObligations.length > 0 && (
+                    <div className="criterion-obligations">
+                      <span className="obligation-label">Nghĩa vụ:</span>
+                      {distinctObligations.map((item, idx) => (
+                        <span key={idx} className="obligation-tag">• {item.text}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )
           })}

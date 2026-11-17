@@ -32,7 +32,11 @@ export function TestWorkbench({ testSet, workspace, view, busy, onViewChange, on
   const [gapOnly, setGapOnly] = useState(false)
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(() => window.matchMedia('(min-width: 1100px)').matches ? testSet.content.test_cases[0]?.id ?? null : null)
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null)
-  const [actor, setActor] = useState('')
+  const [actor, setActor] = useState(() => localStorage.getItem('qa-compass-actor') || '')
+  const updateActor = (val: string) => {
+    setActor(val)
+    localStorage.setItem('qa-compass-actor', val)
+  }
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [editError, setEditError] = useState('')
@@ -146,7 +150,11 @@ export function TestWorkbench({ testSet, workspace, view, busy, onViewChange, on
                       : test.requirement_traceability[0] ?? test.api_traceability?.[0] ?? 'Thiếu liên kết'}
                   </small>
                 </td>
-                <td>{test.needs_clarification ? <span className="clarify">Cần làm rõ</span> : isCaseReady(testSet, test) ? <span className="ready">Sẵn sàng chạy</span> : <span className="neutral-status">Chờ điều kiện chạy</span>}</td>
+                <td>{test.needs_clarification ? <span className="clarify">Cần làm rõ</span> : isCaseReady(testSet, test) ? <span className="ready">Sẵn sàng chạy</span> : (() => {
+                  const item = (testSet.case_readiness ?? []).find(r => r.case_id === test.id && r.content_version === testSet.content_version && r.story_version === testSet.story_version)
+                  const count = [item?.environment_ready, item?.test_data_ready, item?.verification_ready].filter(Boolean).length
+                  return count > 0 ? <span className="badge badge-draft" title={item?.note ? `Ghi chú: ${item.note}` : undefined}>Đang chuẩn bị ({count}/3)</span> : <span className="neutral-status">Chờ điều kiện chạy</span>
+                })()}</td>
               </tr>)}</tbody></table> :
               <table className="qa-table coverage-table"><caption className="sr-only">Coverage thiết kế theo từng mục tiêu</caption><thead><tr><th scope="col">Mục tiêu kiểm thử</th><th scope="col">Bằng chứng thiết kế</th><th scope="col">Quyết định QA</th></tr></thead><tbody>{filteredRows.map(row => {
                 const decision = decisions.find(item => item.target_type === row.target_type && item.target_id === row.target_id)
@@ -205,14 +213,14 @@ export function TestWorkbench({ testSet, workspace, view, busy, onViewChange, on
               <details><summary>Preconditions & test data</summary><h4>Preconditions</h4><TextList items={selectedCase.preconditions} empty="Không yêu cầu." /><h4>Test data</h4><TextList items={selectedCase.test_data} empty="Chưa khai báo dữ liệu." /></details>
               {selectedCase.api_method && <details><summary>API request & response</summary><p><code>{selectedCase.api_method}</code> {selectedCase.api_path}</p><pre>{selectedCase.api_request}</pre><p>Status: {(selectedCase.expected_status_codes ?? []).join(', ') || 'Chưa xác nhận'}</p></details>}
               {selectedCase.assumptions.length > 0 && <details><summary>Assumptions ({selectedCase.assumptions.length})</summary><TextList items={selectedCase.assumptions} empty="" /></details>}
-              <details className="decision-section"><summary>Đánh giá điều kiện chạy</summary><label className="actor-field">Người đánh giá<input value={actor} onChange={event => setActor(event.target.value)} placeholder="Tên QA" /><small>Danh tính tự khai trong MVP.</small></label><ReadinessRow key={selectedCase.id} test={selectedCase} current={testSet.stale ? undefined : testSet.case_readiness?.find(item => item.case_id === selectedCase.id && item.content_version === testSet.content_version)} actor={actor} disabled={Boolean(busy) || testSet.stale} onAssess={onAssess} /></details>
+              <details className="decision-section" open><summary>Đánh giá điều kiện chạy</summary><label className="actor-field">Người đánh giá<input value={actor} onChange={event => updateActor(event.target.value)} placeholder="Tên QA" /><small>Danh tính tự khai trong MVP.</small></label><ReadinessRow key={`${selectedCase.id}-${testSet.content_version}`} test={selectedCase} current={testSet.stale ? undefined : testSet.case_readiness?.find(item => item.case_id === selectedCase.id && item.content_version === testSet.content_version)} actor={actor} disabled={Boolean(busy) || testSet.stale} onAssess={onAssess} /></details>
             </> : selectedRow ? <>
               <div className="case-meta"><span className="target-kind">{targetLabels[selectedRow.target_type]}</span><code>{selectedRow.target_id}</code></div><h3 className="evidence-case-title">{targetDescription(workspace, testSet, selectedRow.target_id) ?? 'Mục tiêu kiểm thử'}</h3><p className="muted">{selectedRow.explanation}</p>
               {!hasDesignEvidence(selectedRow) && <div className="inline-warning"><AlertTriangle size={16} /><span>Chưa đủ bằng chứng thiết kế. Liên kết ID chưa xác nhận test kiểm tra đầy đủ mục tiêu.</span></div>}
               <section><h4>Assertions được liên kết</h4>{selectedRow.assertion_evidence?.length ? selectedRow.assertion_evidence.map((item, index) => <div className="assertion-proof" key={index}><button className="text-button" onClick={() => openCase(item.test_case_id)}>{item.test_case_id}<ArrowUpRight size={14} /></button><blockquote>{item.assertion}</blockquote><small>{item.verifies_business_outcome ? 'Kỳ vọng kết quả nghiệp vụ' : 'Kiểm tra API / schema'}</small></div>) : <p className="empty-evidence">Chưa có assertion. QA cần kiểm tra traceability và Expected Result của các case liên quan.</p>}</section>
               {selectedRow.unverified_aspects?.length ? <section><h4>Phần chưa kiểm tra</h4><TextList items={selectedRow.unverified_aspects} empty="" /></section> : null}
               <section><h4>Test cases liên quan</h4><div className="linked-cases">{selectedRow.test_case_ids.map(id => <button key={id} className="button button-ghost" onClick={() => openCase(id)}>{id}<ArrowUpRight size={13} /></button>)}</div>{!selectedRow.test_case_ids.length && <p className="muted">Chưa có test liên kết với mục tiêu này.</p>}</section>
-              <section className="decision-section"><h4>Quyết định QA</h4><label className="actor-field">Người quyết định<input value={actor} onChange={event => setActor(event.target.value)} placeholder="Tên QA" /><small>Danh tính tự khai. Gap không được tính là covered.</small></label><TargetDecision key={`${selectedRow.target_type}:${selectedRow.target_id}`} row={selectedRow} decision={selectedDecision} actor={actor} disabled={Boolean(busy) || testSet.stale} onDecide={onDecide} /></section>
+              <section className="decision-section"><h4>Quyết định QA</h4><label className="actor-field">Người quyết định<input value={actor} onChange={event => updateActor(event.target.value)} placeholder="Tên QA" /><small>Danh tính tự khai. Gap không được tính là covered.</small></label><TargetDecision key={`${selectedRow.target_type}:${selectedRow.target_id}`} row={selectedRow} decision={selectedDecision} actor={actor} disabled={Boolean(busy) || testSet.stale} onDecide={onDecide} /></section>
             </> : null}
           </div>
         </section>}
@@ -291,7 +299,7 @@ export function TestWorkbench({ testSet, workspace, view, busy, onViewChange, on
             )}
           </div>
           <div className="acceptance-controls">
-            <input aria-label="Người chấp nhận phạm vi" placeholder="Tên người chấp nhận / QA" value={actor} onChange={event => setActor(event.target.value)} />
+            <input aria-label="Người chấp nhận phạm vi" placeholder="Tên người chấp nhận / QA" value={actor} onChange={event => updateActor(event.target.value)} />
             <button className="button" disabled={Boolean(busy) || testSet.stale || testSet.review_status !== 'approved' || !actor.trim() || unresolved.length > 0 || testSet.coverage_acceptance_status === 'accepted'} onClick={() => void onAccept(actor.trim())}>
               <Check size={15} /> Chấp nhận phạm vi
             </button>

@@ -73,7 +73,7 @@ export interface TestSet {
 }
 export type GapDisposition = 'confirmed' | 'accepted_risk' | 'deferred' | 'blocked' | 'not_applicable'
 export interface CoverageDecision { target_type: CoverageEntry['target_type']; target_id: string; disposition: GapDisposition; decided_by: string; decided_at: string; assertion_case_id: string | null; assertion: string | null; reason: string | null; owner: string | null; story_version: number; content_version: number }
-export interface CaseReadiness { case_id: string; assessed_by: string; environment_ready: boolean; test_data_ready: boolean; verification_ready: boolean; note: string | null; story_version: number; content_version: number }
+export interface CaseReadiness { case_id: string; assessed_by: string; environment_ready: boolean; test_data_ready: boolean; verification_ready: boolean; note: string | null; story_version: number; content_version: number; assessed_at?: string }
 export interface Story {
   id: string; title: string; description: string; acceptance_criteria: string[]; business_context: string | null
   dependencies: string[]; language: 'auto' | 'vi' | 'en'; version: number; created_at: string; updated_at: string
